@@ -37,7 +37,7 @@ describe("level 01", () => {
       if (sim.ember.downed) break;
     }
     expect(sim.ember.downed).toBe(true);
-    expect(["gap_mist", "water_spawn", "water_mid", "void"]).toContain(sim.downedCause);
+    expect(["gap_mist", "gap_mist2", "water_spawn", "water_mid", "void"]).toContain(sim.downedCause);
   });
 
   it("frost walking the lava seep without jumping is downed", () => {
@@ -57,6 +57,24 @@ describe("level 01", () => {
     }
     expect(sim.frost.downed).toBe(true);
     expect(sim.downedCause).toBe("lava_jump");
+  });
+
+  it("frost cannot pass the first hold gate without ember on the plate", () => {
+    const sim = createSim(LEVEL_01);
+    sim.ember.x = 4 * 48;
+    sim.frost.x = 35.2 * 48;
+    sim.frost.y = sim.level.spawns.frost.y;
+    sim.frost.onGround = true;
+    sim.wisp.x = 60 * 48;
+    sim.wisp.nestX = 60 * 48;
+    const limit = Math.ceil(4 / PHYS_DT);
+    const ember = { ...EMPTY_INTENT };
+    const frost = { ...EMPTY_INTENT, right: true };
+    for (let i = 0; i < limit; i++) {
+      stepSim(sim, { ember, frost });
+    }
+    expect(sim.frost.downed).toBe(false);
+    expect(sim.frost.x + sim.frost.w / 2).toBeLessThan(37.4 * 48);
   });
 
   it("official policy clears without deaths or charge", () => {

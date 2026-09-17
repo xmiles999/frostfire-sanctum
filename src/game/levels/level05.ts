@@ -11,6 +11,7 @@ export const L05 = {
   leverX: 15.5 * T,
   fireWindowX: 22 * T,
   frostChamberX: 24 * T,
+  holdEmberX: 25.6 * T,
   plateEmberX: 52 * T,
   plateFrostX: 52 * T,
   exitEmberX: 67.2 * T,
@@ -30,7 +31,8 @@ export const LEVEL_05: LevelDocument = {
     R(0, 15, 72, 1),
     R(0, 0, 1, 16),
     R(71, 0, 1, 16),
-    R(1, 8, 18, 1),
+    R(1, 8, 6, 1),
+    R(9.5, 8, 8.5, 1),
     R(22, 8, 34, 1),
     R(1, 15, 20, 1),
     R(24, 15, 32, 1),
@@ -39,8 +41,11 @@ export const LEVEL_05: LevelDocument = {
   ],
   gatedSolids: [R(56, 1, 1, 8), R(56, 9, 1, 6)],
   hazards: [
+    { id: "gap_mist", type: "ice_mist", rect: R(6.2, 9, 3.3, 5) },
     { id: "fake_mist", type: "ice_mist", rect: R(19, 6.2, 3, 1.8) },
     { id: "lava_fake", type: "lava_shallow", rect: R(19.2, 7.55, 2.6, 0.5) },
+    { id: "lava_frost_early", type: "lava_shallow", rect: R(12.2, 14.5, 3.2, 0.5) },
+    { id: "lava_frost_hall", type: "lava_shallow", rect: R(36.4, 14.5, 3.2, 0.5) },
     { id: "lava_exit", type: "lava_shallow", rect: R(58, 7.55, 8, 0.5) },
     { id: "water_exit", type: "water_shallow", rect: R(58, 14, 8, 1) },
   ],
@@ -50,6 +55,14 @@ export const LEVEL_05: LevelDocument = {
   chargeBudget: 1,
   score: { starTimeMs: 260_000, starDeaths: 4 },
   levers: [{ id: "gear_a", rect: R(14.5, 6.9, 2.4, 1.2), kind: "gear" }],
+  holdGates: [
+    {
+      id: "ember_holds_frost_hall",
+      who: "ember",
+      plate: R(24.4, 7.45, 2.6, 0.55),
+      rects: [R(44.2, 9, 1.2, 6)],
+    },
+  ],
   gear: {
     windows: [
       {

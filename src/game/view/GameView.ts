@@ -18,7 +18,7 @@ import { makeCamera, updateCamera, type Camera } from "../engine/camera";
 import { rectsOverlap, type Rect } from "../engine/aabb";
 import { actorRect } from "../engine/physics";
 import type { ActorState, Hazard, SimState } from "../sim/types";
-import { activeHazards } from "../sim/world";
+import { activeHazards, standingOnPlate } from "../sim/world";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/?$/, "/");
 
@@ -168,10 +168,10 @@ export class GameView {
     return t;
   }
 
-  private solidKind(r: Rect): "ember" | "frost" | "ceiling" | "wall" {
+  private solidKind(r: Rect, worldH: number): "ember" | "frost" | "ceiling" | "wall" {
     if (r.h >= r.w * 1.5) return "wall";
     if (r.y <= TILE * 0.6) return "ceiling";
-    if (r.y >= 12 * TILE) return "frost";
+    if (r.y >= worldH - 6 * TILE) return "frost";
     return "ember";
   }
 
@@ -283,8 +283,9 @@ export class GameView {
     const waterSurface = this.tex("assets/levels/01/water-surface.jpg");
     const doorTex = this.tex("assets/levels/01/door.png");
 
+    const worldH = sim.level.size.h * TILE;
     for (const s of sim.level.solids) {
-      const kind = this.solidKind(s);
+      const kind = this.solidKind(s, worldH);
       if (kind === "wall") this.props.addChild(this.tile(wall, s));
       else if (kind === "ceiling") this.props.addChild(this.slab(ceiling, s, 0, 18));
       else if (kind === "frost") this.props.addChild(this.slab(roadFrost, s));
@@ -729,6 +730,18 @@ export class GameView {
           g.roundRect(r.x, r.y, r.w, r.h, 3);
           g.fill({ color: gate.side === "lava" ? 0xb85a28 : 0x3a7a92, alpha: 0.88 });
         }
+      }
+    }
+    for (const gate of sim.level.holdGates ?? []) {
+      const held =
+        (gate.who !== "frost" && standingOnPlate(sim.ember, gate.plate)) ||
+        (gate.who !== "ember" && standingOnPlate(sim.frost, gate.plate));
+      g.roundRect(gate.plate.x, gate.plate.y - 5, gate.plate.w, gate.plate.h + 7, 5);
+      g.fill({ color: held ? 0xe8c56a : 0x5c564c, alpha: 0.9 });
+      if (held) continue;
+      for (const r of gate.rects) {
+        g.roundRect(r.x, r.y, r.w, r.h, 3);
+        g.fill({ color: 0x8a7048, alpha: 0.92 });
       }
     }
     if (sim.level.gear) {

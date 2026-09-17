@@ -27,14 +27,27 @@ function resolveAxis(
   a.x += dx;
   a.y += dy;
   let hit = false;
+  // Only the nearest overlapping slab; resolving every hit in one pass teleports through stacked floors.
+  let best: Rect | null = null;
+  let bestDist = Infinity;
   for (const s of solids) {
     if (!rectsOverlap(actorRect(a), s)) continue;
     hit = true;
-    if (dx > 0) a.x = s.x - a.w;
-    else if (dx < 0) a.x = s.x + s.w;
-    if (dy > 0) a.y = s.y - a.h;
-    else if (dy < 0) a.y = s.y + s.h;
+    let d = Infinity;
+    if (dx > 0) d = a.x + a.w - s.x;
+    else if (dx < 0) d = s.x + s.w - a.x;
+    else if (dy > 0) d = a.y + a.h - s.y;
+    else if (dy < 0) d = s.y + s.h - a.y;
+    if (d >= 0 && d < bestDist) {
+      bestDist = d;
+      best = s;
+    }
   }
+  if (!best) return hit;
+  if (dx > 0) a.x = best.x - a.w;
+  else if (dx < 0) a.x = best.x + best.w;
+  if (dy > 0) a.y = best.y - a.h;
+  else if (dy < 0) a.y = best.y + best.h;
   return hit;
 }
 

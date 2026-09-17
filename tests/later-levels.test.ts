@@ -9,7 +9,7 @@ import { stepSim } from "../src/game/sim/step";
 import { EMPTY_INTENT } from "../src/game/sim/types";
 import { officialPolicy } from "../src/game/systems/replay";
 
-function runOfficial(level: typeof LEVEL_02, seconds = 90) {
+function runOfficial(level: typeof LEVEL_02, seconds = 150) {
   const sim = createSim(level);
   const limit = Math.ceil(seconds / PHYS_DT);
   for (let i = 0; i < limit; i++) {

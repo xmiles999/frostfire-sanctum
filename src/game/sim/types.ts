@@ -157,6 +157,14 @@ export interface ExtraPlate {
   who: "ember" | "frost" | "any";
 }
 
+/** Gate stays solid unless the matching actor is standing on the plate. */
+export interface HoldGate {
+  id: string;
+  plate: Rect;
+  who: "ember" | "frost" | "any";
+  rects: Rect[];
+}
+
 export interface GearWindow {
   id: string;
   openAtMs: number;
@@ -191,6 +199,7 @@ export interface LevelDocument {
   phaseGates?: PhaseGate[];
   oneWays?: OneWay[];
   extraPlates?: ExtraPlate[];
+  holdGates?: HoldGate[];
   gear?: GearSpec;
   doorLatchMs?: number;
 }

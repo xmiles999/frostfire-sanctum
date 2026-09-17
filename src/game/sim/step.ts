@@ -31,7 +31,7 @@ import {
 import { actorRect, integrateActor } from "../engine/physics";
 import type { ActorState, Hazard, Intent, PairIntent, SimState } from "./types";
 import { steamAt } from "./steam";
-import { activeHazards, applyOneWays, crateRect, onIce, solidsNow } from "./world";
+import { activeHazards, applyOneWays, crateRect, onIce, solidsNow, standingOnPlate } from "./world";
 
 function lethalFor(actor: ActorState, type: Hazard["type"], steamLethal: boolean): boolean {
   if (actor.invulnMs > 0 || actor.downed) return false;
@@ -135,16 +135,7 @@ function inLava(sim: SimState, actor: ActorState): boolean {
 }
 
 function actorStandingOnPlate(actor: ActorState, plate: Rect): boolean {
-  if (actor.downed || !actor.onGround) return false;
-  const footX = actor.x + actor.w / 2;
-  const footY = actor.y + actor.h;
-  const horizontalInset = Math.min(10, plate.w * 0.12);
-  return (
-    footX >= plate.x + horizontalInset &&
-    footX <= plate.x + plate.w - horizontalInset &&
-    footY >= plate.y - 10 &&
-    footY <= plate.y + plate.h + 10
-  );
+  return standingOnPlate(actor, plate);
 }
 
 function crateOnPlate(crate: SimState["crates"][number], plate: Rect): boolean {

@@ -1,5 +1,31 @@
 import { rectsOverlap, type Rect } from "../engine/aabb";
-import type { CrateState, Hazard, SimState } from "./types";
+import type { ActorState, CrateState, Hazard, HoldGate, SimState } from "./types";
+
+export function standingOnPlate(
+  actor: Pick<ActorState, "x" | "y" | "w" | "h" | "downed" | "onGround">,
+  plate: Rect,
+): boolean {
+  if (actor.downed || !actor.onGround) return false;
+  const footX = actor.x + actor.w / 2;
+  const footY = actor.y + actor.h;
+  const inset = Math.min(10, plate.w * 0.12);
+  return (
+    footX >= plate.x + inset &&
+    footX <= plate.x + plate.w - inset &&
+    footY >= plate.y - 10 &&
+    footY <= plate.y + plate.h + 10
+  );
+}
+
+function holdGateOpen(sim: SimState, gate: HoldGate): boolean {
+  if (gate.who === "ember" || gate.who === "any") {
+    if (standingOnPlate(sim.ember, gate.plate)) return true;
+  }
+  if (gate.who === "frost" || gate.who === "any") {
+    if (standingOnPlate(sim.frost, gate.plate)) return true;
+  }
+  return false;
+}
 
 export function crateRect(c: CrateState): Rect {
   return { x: c.x, y: c.y, w: c.w, h: c.h };
@@ -43,6 +69,9 @@ export function solidsNow(sim: SimState): Rect[] {
     }
   } else if (sim.level.gear) {
     for (const win of sim.level.gear.windows) solids.push(...win.solidsWhenClosed);
+  }
+  for (const gate of sim.level.holdGates ?? []) {
+    if (!holdGateOpen(sim, gate)) solids.push(...gate.rects);
   }
   return solids;
 }

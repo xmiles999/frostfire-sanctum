@@ -9,6 +9,7 @@ export const L02 = {
   emberSpawn: { x: 2.4 * T, y: 6 * T - ACTOR_H },
   frostSpawn: { x: 2.4 * T, y: 15 * T - ACTOR_H },
   leverX: 19 * T,
+  holdEmberX: 25.6 * T,
   wellEdgeX: 38 * T,
   wellX: 42 * T,
   plateEmberX: 52 * T,
@@ -35,12 +36,14 @@ export const LEVEL_02: LevelDocument = {
     R(71, 0, 1, 16),
     R(1, 6, 10, 1),
     R(16, 5.5, 8, 1),
-    R(1, 8, 55, 1),
+    R(1, 8, 26, 1),
+    R(30.2, 8, 24.8, 1),
     R(57, 8, 14, 1),
     R(57, 12, 4, 1),
   ],
   gatedSolids: [R(56, 1, 1, 8), R(56, 9, 1, 6)],
   hazards: [
+    { id: "gap_mist", type: "ice_mist", rect: R(27, 9, 3.2, 5) },
     { id: "lava_exit", type: "lava_shallow", rect: R(58, 7.55, 8, 0.5) },
     { id: "water_exit", type: "water_shallow", rect: R(58, 14, 8, 1) },
   ],
@@ -51,6 +54,14 @@ export const LEVEL_02: LevelDocument = {
   score: { starTimeMs: 210_000, starDeaths: 5 },
   crates: [{ id: "well_crate", x: 8 * T, y: 15 * T - 40, w: 40, h: 40, density: 1.2 }],
   levers: [{ id: "tide", rect: R(18.2, 4.4, 2.2, 1.2), kind: "tide" }],
+  holdGates: [
+    {
+      id: "ember_holds_frost_hall",
+      who: "ember",
+      plate: R(24.4, 7.45, 2.6, 0.55),
+      rects: [R(49.2, 9, 1.2, 6)],
+    },
+  ],
   tide: {
     wellPlate: R(41, 14.4, 4, 0.7),
     ice: [R(22, 14.55, 10, 0.45)],
