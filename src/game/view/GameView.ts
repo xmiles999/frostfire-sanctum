@@ -18,6 +18,7 @@ import { makeCamera, updateCamera, type Camera } from "../engine/camera";
 import { rectsOverlap, type Rect } from "../engine/aabb";
 import { actorRect } from "../engine/physics";
 import type { ActorState, Hazard, SimState } from "../sim/types";
+import { activeHazards } from "../sim/world";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/?$/, "/");
 
@@ -29,7 +30,8 @@ function frameUrls(dir: string, count: number): string[] {
   return Array.from({ length: count }, (_, i) => asset(`${dir}/${String(i).padStart(2, "0")}.png`));
 }
 
-const SPRITE_H = 168;
+/** On-screen character height in world px. Collision is 70; keep a little cape/hair overshoot. */
+const SPRITE_H = 96;
 
 function criticalUrls(): string[] {
   return [
@@ -263,6 +265,12 @@ export class GameView {
     }
   }
 
+  resetWorld(): void {
+    this.props.removeChildren();
+    this.liquids = [];
+    this.doorSprites = [];
+  }
+
   private layoutProps(sim: SimState): void {
     if (this.props.children.length > 0) return;
     const roadEmber = this.tex("assets/levels/01/road-ember.jpg");
@@ -369,12 +377,14 @@ export class GameView {
     this.flowLiquids(dt);
     this.paintSteam(sim);
     this.paintMechanisms(sim, doorProgress);
+    this.paintPuzzles(sim);
     this.paintMarks(sim);
+    this.wisp.visible = sim.wisp.nestX > 0;
     this.pose(this.ember, sim.ember, "ember");
     this.pose(this.frost, sim.frost, "frost");
     this.wisp.x = sim.wisp.x;
     this.wisp.y = sim.wisp.y + 22;
-    const wispS = 88 / Math.max(this.wisp.texture.height, 1);
+    const wispS = 52 / Math.max(this.wisp.texture.height, 1);
     this.wisp.scale.set(wispS * sim.wisp.facing, wispS);
     this.wisp.alpha = sim.wisp.phase === "idle" ? 0.85 : 1;
     this.wisp.tint = sim.wisp.phase === "acquire" ? 0xffdd88 : 0xffffff;
@@ -630,9 +640,9 @@ export class GameView {
 
   private paintLiquids(sim: SimState): void {
     const g = this.overlay;
-    for (const h of sim.level.hazards) {
-      if (h.type === "lava_shallow") this.paintLavaFx(g, h, sim.timeMs);
-      if (h.type === "water_shallow") this.paintRiverFx(g, h, sim.timeMs);
+    for (const h of activeHazards(sim)) {
+      if (h.type === "lava_shallow" || h.type === "lava_deep") this.paintLavaFx(g, h, sim.timeMs);
+      if (h.type === "water_shallow" || h.type === "water_deep") this.paintRiverFx(g, h, sim.timeMs);
     }
   }
 
@@ -657,8 +667,87 @@ export class GameView {
     }
   }
 
+  private paintPuzzles(sim: SimState): void {
+    const g = this.mechanismFx;
+    for (const ice of sim.level.tide?.ice ?? []) {
+      g.roundRect(ice.x, ice.y - 4, ice.w, ice.h + 6, 4);
+      g.fill({ color: 0xb9e7ff, alpha: 0.28 });
+    }
+    if (sim.tideLevel === 1) {
+      for (const ice of sim.level.tide?.floatIce ?? []) {
+        g.roundRect(ice.x, ice.y - 6, ice.w, ice.h + 8, 5);
+        g.fill({ color: 0xd7f4ff, alpha: 0.55 });
+        g.stroke({ color: 0x8fd4ea, width: 2, alpha: 0.7 });
+      }
+    }
+    for (const spec of sim.level.bridges ?? []) {
+      const rt = sim.bridges.find((b) => b.id === spec.id);
+      if (rt?.collapsed) continue;
+      const burning = rt?.ignited;
+      g.roundRect(spec.rect.x, spec.rect.y - 8, spec.rect.w, spec.rect.h + 10, 4);
+      g.fill({ color: burning ? 0xc45a22 : spec.oily ? 0x3a2414 : 0x6a4a2a, alpha: 0.95 });
+      if (burning) {
+        g.roundRect(spec.rect.x + 4, spec.rect.y - 16, spec.rect.w - 8, 10, 3);
+        g.fill({ color: 0xffb040, alpha: 0.45 });
+      }
+    }
+    for (const ash of sim.ashSolids) {
+      g.roundRect(ash.x, ash.y - 6, ash.w, ash.h + 8, 5);
+      g.fill({ color: 0x5b534c, alpha: 0.95 });
+    }
+    for (const crate of sim.crates) {
+      g.roundRect(crate.x, crate.y, crate.w, crate.h, 4);
+      g.fill({ color: 0x8a6a3a, alpha: 1 });
+      g.stroke({ color: 0xd7c39a, width: 2, alpha: 0.9 });
+      if (sim.tideLevel > 0) {
+        g.roundRect(crate.x + 4, crate.y + 6, crate.w - 8, 6, 2);
+        g.fill({ color: 0x6aa0c8, alpha: 0.45 + sim.tideLevel * 0.15 });
+      }
+    }
+    for (const lever of sim.level.levers ?? []) {
+      const pulled = lever.kind === "tide" ? sim.tideLevel !== 0 : sim.gearArmedMs !== null;
+      g.roundRect(lever.rect.x, lever.rect.y, lever.rect.w, lever.rect.h, 4);
+      g.fill({ color: 0x3d3a34, alpha: 0.95 });
+      g.roundRect(lever.rect.x + 6, lever.rect.y - 10, 8, lever.rect.h + 8, 3);
+      g.fill({ color: pulled ? 0xe08a3a : 0xcfc4b0, alpha: 1 });
+    }
+    for (const plate of sim.level.extraPlates ?? []) {
+      const on = sim.extraHeld[plate.id];
+      g.roundRect(plate.rect.x, plate.rect.y - 4, plate.rect.w, plate.rect.h + 6, 5);
+      g.fill({ color: on ? (plate.who === "ember" ? 0xffa45f : 0x8edfff) : 0x6a645a, alpha: 0.85 });
+    }
+    for (const way of sim.level.oneWays ?? []) {
+      g.roundRect(way.rect.x, way.rect.y, way.rect.w, way.rect.h, 3);
+      g.fill({ color: 0x9a8b6a, alpha: 0.55 });
+    }
+    if (sim.level.phaseGates) {
+      const lavaOpen = sim.phase === 0;
+      for (const gate of sim.level.phaseGates) {
+        const open = gate.side === "lava" ? lavaOpen : !lavaOpen;
+        if (open) continue;
+        for (const r of gate.rects) {
+          g.roundRect(r.x, r.y, r.w, r.h, 3);
+          g.fill({ color: gate.side === "lava" ? 0xb85a28 : 0x3a7a92, alpha: 0.88 });
+        }
+      }
+    }
+    if (sim.level.gear) {
+      const t = sim.gearArmedMs;
+      for (const win of sim.level.gear.windows) {
+        const open = t !== null && t >= win.openAtMs && t < win.closeAtMs;
+        if (open) continue;
+        for (const r of win.solidsWhenClosed) {
+          g.roundRect(r.x, r.y, r.w, r.h, 3);
+          g.fill({ color: 0x6e6758, alpha: 0.9 });
+        }
+      }
+    }
+  }
+
   private paintRiverFx(g: Graphics, h: Hazard, timeMs: number): void {
     const r = h.rect;
+    g.roundRect(r.x, r.y - 4, r.w, r.h + 10, 8);
+    g.fill({ color: h.type === "water_deep" ? 0x1f4c5c : 0x3a6a78, alpha: 0.22 });
     const sheen = 0.1 + Math.sin(timeMs * 0.0035) * 0.04;
     g.roundRect(r.x, r.y - 8, r.w, 10, 3);
     g.fill({ color: 0xd7f3fb, alpha: sheen });

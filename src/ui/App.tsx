@@ -2,29 +2,53 @@ import { useEffect, useRef, useState } from "react";
 import { GameRuntime, type HudModel } from "../game/runtime";
 import { GameView } from "../game/view/GameView";
 import { loadSave } from "../game/systems/save";
+import { LEVELS } from "../game/levels/catalog";
 
-type Page = "title" | "howto" | "play";
+type Page = "title" | "howto" | "select" | "play";
 
 export function App() {
   const [page, setPage] = useState<Page>("title");
-  const [save] = useState(() => loadSave());
-  if (page === "howto") return <HowTo onBack={() => setPage("title")} onPlay={() => setPage("play")} />;
-  if (page === "play") return <Play onExit={() => setPage("title")} />;
+  const [save, setSave] = useState(() => loadSave());
+  const [levelId, setLevelId] = useState("01");
+  if (page === "howto") return <HowTo onBack={() => setPage("title")} onPlay={() => setPage("select")} />;
+  if (page === "select") {
+    return (
+      <Select
+        save={save}
+        onBack={() => setPage("title")}
+        onPick={(id) => {
+          setLevelId(id);
+          setPage("play");
+        }}
+      />
+    );
+  }
+  if (page === "play") {
+    return (
+      <Play
+        levelId={levelId}
+        onExit={() => {
+          setSave(loadSave());
+          setPage("select");
+        }}
+      />
+    );
+  }
   return (
     <div className="screen" style={{ backgroundImage: "url(/assets/levels/01/bg-far.jpg)" }}>
       <h1>霜焰双行</h1>
-      <p className="sub">林渊圣所 · 第 1 关竖切</p>
+      <p className="sub">林渊圣所 · 双人协作解谜</p>
       <p className="sub">烬 WASD + J　朔 方向键 + ;</p>
       <div className="actions">
-        <button className="btn ember" onClick={() => setPage("play")}>
-          进入裂隙初醒
+        <button className="btn ember" onClick={() => setPage("select")}>
+          选关
         </button>
         <button className="btn frost" onClick={() => setPage("howto")}>
           操作说明
         </button>
       </div>
       <p className="sub" style={{ marginTop: 28 }}>
-        已解锁 {save.progress.unlockedCount} / 18　（其余关卡属阶段 D）
+        已解锁 {save.progress.unlockedCount} / 18
       </p>
     </div>
   );
@@ -39,11 +63,9 @@ function HowTo({ onBack, onPlay }: { onBack: () => void; onPlay: () => void }) {
         <p>
           烬：<kbd>W A S D</kbd> 移动跳跃，<kbd>J</kbd> 交互。朔：<kbd>↑ ← ↓ →</kbd>，<kbd>;</kbd> 交互。
         </p>
+        <p>第 1 关教伤害与诱敌。之后每关加一条新规则：潮位推箱、点燃木桥、反相双闸、延迟齿轮。</p>
         <p>
-          第 1 关：先用烬把寻热残烬引到熔岩边，朔再过廊。蒸汽喷发前金属盖会震颤——白雾未尽不要冲。两人同时踩压板 0.8 秒后门只开 5 秒，分路冲壁龛。
-        </p>
-        <p>
-          <kbd>Esc</kbd> 暂停，<kbd>R</kbd> 重开。没有检查点。单人倒地有 8 秒救援窗（祭坛）。
+          <kbd>Esc</kbd> 暂停，<kbd>R</kbd> 重开。1–8 关没有检查点。单人倒地有 8 秒救援窗（祭坛）。
         </p>
       </div>
       <div className="actions">
@@ -51,14 +73,56 @@ function HowTo({ onBack, onPlay }: { onBack: () => void; onPlay: () => void }) {
           返回
         </button>
         <button className="btn ember" onClick={onPlay}>
-          开始
+          选关
         </button>
       </div>
     </div>
   );
 }
 
-function Play({ onExit }: { onExit: () => void }) {
+function Select({
+  save,
+  onBack,
+  onPick,
+}: {
+  save: ReturnType<typeof loadSave>;
+  onBack: () => void;
+  onPick: (id: string) => void;
+}) {
+  return (
+    <div className="screen">
+      <h1>选关</h1>
+      <p className="sub">通关解锁下一关。每关只引入一条新规则。</p>
+      <div className="level-grid">
+        {LEVELS.map((level, index) => {
+          const unlocked = index < save.progress.unlockedCount;
+          const rec = save.progress.levels[level.id];
+          return (
+            <button
+              key={level.id}
+              className={`level-card ${unlocked ? "" : "locked"}`}
+              disabled={!unlocked}
+              onClick={() => unlocked && onPick(level.id)}
+            >
+              <span className="level-id">{level.id}</span>
+              <span className="level-title">{level.title}</span>
+              <span className="level-meta">
+                {unlocked ? (rec?.cleared ? `${rec.stars} 星` : "未通关") : "未解锁"}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="actions" style={{ marginTop: 28 }}>
+        <button className="btn" onClick={onBack}>
+          返回
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Play({ levelId, onExit }: { levelId: string; onExit: () => void }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rtRef = useRef<GameRuntime | null>(null);
@@ -72,6 +136,7 @@ function Play({ onExit }: { onExit: () => void }) {
     const canvas = canvasRef.current;
     if (!wrap || !canvas) return;
     const rt = new GameRuntime();
+    rt.load(levelId);
     rtRef.current = rt;
     rt.onHud = setHud;
     const ac = new AbortController();
@@ -136,7 +201,7 @@ function Play({ onExit }: { onExit: () => void }) {
       document.removeEventListener("visibilitychange", onVisibility);
       rt.detach();
     };
-  }, []);
+  }, [levelId]);
 
   const status = hud?.status;
   return (
@@ -161,10 +226,8 @@ function Play({ onExit }: { onExit: () => void }) {
         <div className="hud-top">
           <div className="tag">{hud?.title ?? "裂隙初醒"}</div>
           <div className="tag">{formatTime(hud?.timeMs ?? 0)} · 死亡 {hud?.deaths ?? 0}</div>
-          <div className="tag">蒸汽 {steamLabel(hud?.steamPhase)}</div>
-          <div className={`tag ${hud?.doorOpen ? "door-live" : ""}`}>
-            闩锁 {doorLabel(hud)}
-          </div>
+          <div className="tag">{hud?.puzzleHint || steamLabel(hud?.steamPhase)}</div>
+          <div className={`tag ${hud?.doorOpen ? "door-live" : ""}`}>闩锁 {doorLabel(hud)}</div>
         </div>
         <div className="hud-bot">
           <div className={`tag ember`}>烬 {hud?.plateEmber ? "压板" : "行动"}</div>

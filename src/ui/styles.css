@@ -61,6 +61,35 @@ button, a { font: inherit; }
   color: var(--ink);
 }
 
+.level-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  width: min(920px, 100%);
+  margin: 8px auto 0;
+}
+.level-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  border: 1px solid var(--gold);
+  background: rgba(12, 10, 8, 0.72);
+  color: var(--ink);
+  padding: 14px 16px;
+  cursor: pointer;
+  letter-spacing: 0.08em;
+}
+.level-card:hover:not(:disabled) { background: rgba(212, 162, 74, 0.16); }
+.level-card.locked, .level-card:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: #5a5348;
+}
+.level-id { color: var(--gold); font-size: 0.78rem; }
+.level-title { font-size: 1.05rem; }
+.level-meta { color: var(--muted); font-size: 0.82rem; }
+
 .play {
   position: relative;
   height: 100%;

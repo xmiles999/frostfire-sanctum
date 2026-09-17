@@ -71,5 +71,6 @@ export const LEVEL_01: LevelDocument = {
   altar: R(48, 12.4, 2.6, 2.6),
   wispNest: { ...L01.wispNest },
   chargeBudget: 1,
+  puzzle: "dual_plates",
   score: { starTimeMs: STAR_TIME_MS, starDeaths: STAR_DEATHS_2 },
 };

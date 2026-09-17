@@ -25,6 +25,7 @@ function makeActor(
     invulnMs: 0,
     anim: "idle",
     animTime: 0,
+    interactHeld: false,
   };
 }
 
@@ -64,5 +65,30 @@ export function createSim(level: LevelDocument): SimState {
     rescues: 0,
     rescueMs: 0,
     downedCause: null,
+    crates: (level.crates ?? []).map((c) => ({
+      id: c.id,
+      x: c.x,
+      y: c.y,
+      w: c.w,
+      h: c.h,
+      vx: 0,
+      vy: 0,
+      density: c.density,
+      onGround: false,
+    })),
+    tideLevel: 0,
+    bridges: (level.bridges ?? []).map((b) => ({
+      id: b.id,
+      ignited: false,
+      burnMs: 0,
+      collapsed: false,
+    })),
+    ashSolids: [],
+    phase: level.puzzle === "phase" ? 1 : 0,
+    phaseLockMs: 0,
+    extraHeld: {},
+    extraHeldMs: {},
+    gearArmedMs: null,
+    puzzleHint: "",
   };
 }

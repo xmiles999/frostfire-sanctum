@@ -1,18 +1,26 @@
-import { rectCenter, rectsOverlap, dist } from "../engine/aabb";
+import { dist, rectCenter, rectsOverlap, type Rect } from "../engine/aabb";
 import {
+  BRIDGE_BURN_MS,
+  BRIDGE_STAND_IGNITE_MS,
+  CRATE_PUSH_SCALE,
   DOOR_LATCH_MS,
   DOOR_MOTION_MS,
   EMBER_SPEED,
   EXIT_HOLD_MS,
+  FALL_SPEED_MAX,
   FROST_SPEED,
+  GRAVITY,
+  IGNITE_RANGE,
   LAVA_SPEED_SCALE,
   MAX_SEPARATION,
+  PHASE_LOCK_MS,
   PHYS_DT,
   PLATE_HOLD_MS,
   RESCUE_MS,
   REVIVE_INVULN_MS,
   SEPARATION_SPEED_SCALE,
   TILE,
+  TIDE_LATCH_MS,
   WISP_ACQUIRE_MS,
   WISP_LOST_MS,
   WISP_PATROL_AMP,
@@ -23,11 +31,12 @@ import {
 import { actorRect, integrateActor } from "../engine/physics";
 import type { ActorState, Hazard, Intent, PairIntent, SimState } from "./types";
 import { steamAt } from "./steam";
+import { activeHazards, applyOneWays, crateRect, onIce, solidsNow } from "./world";
 
 function lethalFor(actor: ActorState, type: Hazard["type"], steamLethal: boolean): boolean {
   if (actor.invulnMs > 0 || actor.downed) return false;
-  if (type === "lava_shallow") return actor.id === "frost";
-  if (type === "water_shallow") return actor.id === "ember";
+  if (type === "lava_shallow" || type === "lava_deep") return actor.id === "frost";
+  if (type === "water_shallow" || type === "water_deep") return actor.id === "ember";
   if (type === "steam_hot") return actor.id === "frost" && steamLethal;
   if (type === "ice_mist") return actor.id === "ember";
   return false;
@@ -43,12 +52,9 @@ function downActor(sim: SimState, actor: ActorState, cause: string): void {
   sim.downedCause = cause;
 }
 
-function solidsNow(sim: SimState) {
-  return sim.doorOpen ? sim.level.solids : [...sim.level.solids, ...sim.level.gatedSolids];
-}
-
 function stepWisp(sim: SimState, dt: number): void {
   const w = sim.wisp;
+  if (w.nestX < 0) return;
   const emberC = rectCenter(actorRect(sim.ember));
   const frostC = rectCenter(actorRect(sim.frost));
   const dEmber = dist(w.x, w.y, emberC.x, emberC.y);
@@ -113,7 +119,7 @@ function stepWisp(sim: SimState, dt: number): void {
 function applyHazards(sim: SimState): void {
   const steamLethal = sim.steamPhase === "lethal";
   for (const actor of [sim.ember, sim.frost]) {
-    for (const h of sim.level.hazards) {
+    for (const h of activeHazards(sim)) {
       if (!rectsOverlap(actorRect(actor), h.rect)) continue;
       if (lethalFor(actor, h.type, steamLethal)) {
         downActor(sim, actor, h.id);
@@ -123,12 +129,12 @@ function applyHazards(sim: SimState): void {
 }
 
 function inLava(sim: SimState, actor: ActorState): boolean {
-  return sim.level.hazards.some(
-    (h) => h.type === "lava_shallow" && rectsOverlap(actorRect(actor), h.rect),
+  return activeHazards(sim).some(
+    (h) => (h.type === "lava_shallow" || h.type === "lava_deep") && rectsOverlap(actorRect(actor), h.rect),
   );
 }
 
-function actorStandingOnPlate(actor: ActorState, plate: SimState["level"]["plates"]["ember"]): boolean {
+function actorStandingOnPlate(actor: ActorState, plate: Rect): boolean {
   if (actor.downed || !actor.onGround) return false;
   const footX = actor.x + actor.w / 2;
   const footY = actor.y + actor.h;
@@ -141,11 +147,23 @@ function actorStandingOnPlate(actor: ActorState, plate: SimState["level"]["plate
   );
 }
 
-function latchDoor(sim: SimState): void {
+function crateOnPlate(crate: SimState["crates"][number], plate: Rect): boolean {
+  const footX = crate.x + crate.w / 2;
+  const footY = crate.y + crate.h;
+  return (
+    crate.onGround &&
+    footX >= plate.x &&
+    footX <= plate.x + plate.w &&
+    footY >= plate.y - 12 &&
+    footY <= plate.y + plate.h + 16
+  );
+}
+
+function latchDoor(sim: SimState, latchMs = DOOR_LATCH_MS): void {
   sim.doorOpen = true;
   sim.doorPhase = "opening";
   sim.doorMotionMs = DOOR_MOTION_MS;
-  sim.latchMs = DOOR_LATCH_MS;
+  sim.latchMs = latchMs;
 }
 
 function stepDoor(sim: SimState, dtMs: number): void {
@@ -192,10 +210,12 @@ function stepActor(
     const midX = (sim.ember.x + sim.frost.x) / 2;
     const sep = Math.abs(sim.ember.x - sim.frost.x);
     if (sep > MAX_SEPARATION) {
-      const farther = Math.abs(actor.x - midX) >= Math.abs((actor === sim.ember ? sim.frost.x : sim.ember.x) - midX);
+      const farther =
+        Math.abs(actor.x - midX) >= Math.abs((actor === sim.ember ? sim.frost.x : sim.ember.x) - midX);
       if (farther) speed *= SEPARATION_SPEED_SCALE;
     }
   }
+  const ice = actor.id === "frost" && onIce(sim, actor.x + actor.w / 2, actor.y + actor.h);
   integrateActor(
     actor,
     solidsNow(sim),
@@ -204,7 +224,9 @@ function stepActor(
     intent.left,
     intent.right,
     intent.jump || intent.up,
+    ice,
   );
+  applyOneWays(sim, actor);
   actor.invulnMs = Math.max(0, actor.invulnMs - dt * 1000);
   actor.animTime += dt;
   const worldH = sim.level.size.h * TILE;
@@ -217,6 +239,211 @@ function stepActor(
   else if (Math.abs(actor.vx) > 8) actor.anim = "walk";
   else if (intent.interact) actor.anim = "interact";
   else actor.anim = "idle";
+}
+
+function waterTopForCrate(sim: SimState, crate: SimState["crates"][number]): number | null {
+  let top: number | null = null;
+  for (const h of activeHazards(sim)) {
+    if (h.type !== "water_shallow" && h.type !== "water_deep") continue;
+    if (crate.x + crate.w < h.rect.x || crate.x > h.rect.x + h.rect.w) continue;
+    top = top === null ? h.rect.y : Math.min(top, h.rect.y);
+  }
+  return top;
+}
+
+function stepCrates(sim: SimState, dt: number): void {
+  const solids = solidsNow(sim);
+  for (const crate of sim.crates) {
+    crate.vy += GRAVITY * dt;
+    if (crate.vy > FALL_SPEED_MAX) crate.vy = FALL_SPEED_MAX;
+    const waterTop = waterTopForCrate(sim, crate);
+    if (waterTop !== null && crate.y + crate.h > waterTop) {
+      if (sim.tideLevel === 2 && crate.density > 1.05) {
+        crate.vy = Math.min(crate.vy, 220);
+      } else if (sim.tideLevel >= 1) {
+        crate.vy = 0;
+        crate.y = waterTop - crate.h + 12;
+      }
+    }
+    for (const actor of [sim.ember, sim.frost]) {
+      if (actor.downed || !rectsOverlap(actorRect(actor), crateRect(crate))) continue;
+      const actorBottom = actor.y + actor.h;
+      if (actor.vy >= 0 && actorBottom <= crate.y + 16 && actorBottom >= crate.y - 10) {
+        actor.y = crate.y - actor.h;
+        actor.vy = 0;
+        actor.onGround = true;
+        continue;
+      }
+      if (Math.abs(actor.vx) > 8) {
+        crate.vx = actor.vx * CRATE_PUSH_SCALE;
+        if (actor.vx > 0) actor.x = crate.x - actor.w;
+        else actor.x = crate.x + crate.w;
+      }
+    }
+    crate.x += crate.vx * dt;
+    crate.y += crate.vy * dt;
+    crate.vx *= onIce(sim, crate.x + crate.w / 2, crate.y + crate.h) ? 0.992 : 0.82;
+    let grounded = false;
+    for (const s of solids) {
+      if (!rectsOverlap(crateRect(crate), s)) continue;
+      if (crate.vy >= 0 && crate.y + crate.h > s.y && crate.y < s.y) {
+        crate.y = s.y - crate.h;
+        crate.vy = 0;
+        grounded = true;
+      } else if (crate.vx > 0) crate.x = s.x - crate.w;
+      else if (crate.vx < 0) crate.x = s.x + s.w;
+    }
+    crate.onGround = grounded;
+    const worldW = sim.level.size.w * TILE;
+    crate.x = Math.max(TILE, Math.min(worldW - TILE - crate.w, crate.x));
+  }
+}
+
+function interactEdge(actor: ActorState, intent: Intent): boolean {
+  const pressed = intent.interact && !actor.interactHeld;
+  actor.interactHeld = intent.interact;
+  return pressed;
+}
+
+function nearRect(actor: ActorState, rect: Rect, pad = 18): boolean {
+  return rectsOverlap(actorRect(actor), {
+    x: rect.x - pad,
+    y: rect.y - pad,
+    w: rect.w + pad * 2,
+    h: rect.h + pad * 2,
+  });
+}
+
+function stepLevers(sim: SimState, intents: PairIntent): void {
+  const emberEdge = interactEdge(sim.ember, intents.ember);
+  const frostEdge = interactEdge(sim.frost, intents.frost);
+  for (const lever of sim.level.levers ?? []) {
+    const used =
+      (emberEdge && nearRect(sim.ember, lever.rect)) || (frostEdge && nearRect(sim.frost, lever.rect));
+    if (!used) continue;
+    if (lever.kind === "tide") {
+      sim.tideLevel = sim.tideLevel === 0 ? 2 : sim.tideLevel === 2 ? 1 : 0;
+    }
+    if (lever.kind === "gear" && sim.gearArmedMs === null) {
+      sim.gearArmedMs = 0;
+    }
+  }
+  if (emberEdge && sim.level.bridges) {
+    for (const bridge of sim.level.bridges) {
+      if (!bridge.oily) continue;
+      const cx = sim.ember.x + sim.ember.w / 2;
+      const cy = sim.ember.y + sim.ember.h / 2;
+      const bx = bridge.rect.x + bridge.rect.w / 2;
+      const by = bridge.rect.y + bridge.rect.h / 2;
+      if (Math.abs(cx - bx) <= 2.2 * TILE && Math.abs(cy - by) <= IGNITE_RANGE) {
+        const rt = sim.bridges.find((b) => b.id === bridge.id);
+        if (rt && !rt.ignited && !rt.collapsed) rt.ignited = true;
+      }
+    }
+  }
+}
+
+function stepBridges(sim: SimState, dt: number): void {
+  for (const spec of sim.level.bridges ?? []) {
+    const rt = sim.bridges.find((b) => b.id === spec.id);
+    if (!rt || rt.collapsed) continue;
+    if (
+      !rt.ignited &&
+      !sim.ember.downed &&
+      actorStandingOnPlate(sim.ember, spec.rect)
+    ) {
+      rt.burnMs += dt * 1000;
+      if (rt.burnMs >= BRIDGE_STAND_IGNITE_MS) {
+        rt.ignited = true;
+        rt.burnMs = 0;
+      }
+    }
+    if (rt.ignited) {
+      rt.burnMs += dt * 1000;
+      if (rt.burnMs >= BRIDGE_BURN_MS) {
+        rt.collapsed = true;
+        if (spec.ashRect) sim.ashSolids.push(spec.ashRect);
+        const bothOn =
+          rectsOverlap(actorRect(sim.ember), spec.rect) && rectsOverlap(actorRect(sim.frost), spec.rect);
+        if (bothOn) {
+          downActor(sim, sim.ember, `bridge_${spec.id}`);
+          downActor(sim, sim.frost, `bridge_${spec.id}`);
+        } else {
+          for (const a of [sim.ember, sim.frost]) {
+            if (rectsOverlap(actorRect(a), spec.rect) && a.y + a.h <= spec.rect.y + 12) {
+              a.onGround = false;
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+function stepPhase(sim: SimState, dt: number): void {
+  if (sim.level.puzzle !== "phase") return;
+  if (sim.phaseLockMs > 0) {
+    sim.phaseLockMs = Math.max(0, sim.phaseLockMs - dt * 1000);
+    return;
+  }
+  for (const plate of sim.level.extraPlates ?? []) {
+    const actor = plate.who === "frost" ? sim.frost : sim.ember;
+    const held = actorStandingOnPlate(actor, plate.rect);
+    sim.extraHeld[plate.id] = held;
+    sim.extraHeldMs[plate.id] = held ? (sim.extraHeldMs[plate.id] ?? 0) + dt * 1000 : 0;
+    if ((sim.extraHeldMs[plate.id] ?? 0) >= PLATE_HOLD_MS) {
+      sim.phase = sim.phase === 0 ? 1 : 0;
+      sim.phaseLockMs = PHASE_LOCK_MS;
+      sim.extraHeldMs[plate.id] = 0;
+    }
+  }
+}
+
+function stepGear(sim: SimState, dt: number): void {
+  if (sim.gearArmedMs === null) return;
+  sim.gearArmedMs += dt * 1000;
+}
+
+function stepPuzzles(sim: SimState, intents: PairIntent, dt: number): void {
+  stepLevers(sim, intents);
+  stepCrates(sim, dt);
+  stepBridges(sim, dt);
+  stepPhase(sim, dt);
+  stepGear(sim, dt);
+
+  const puzzle = sim.level.puzzle ?? "dual_plates";
+  if (puzzle === "dual_plates" || puzzle === "burn" || puzzle === "gear" || puzzle === "phase") {
+    sim.plateEmber = actorStandingOnPlate(sim.ember, sim.level.plates.ember);
+    sim.plateFrost = actorStandingOnPlate(sim.frost, sim.level.plates.frost);
+    if (sim.plateEmber && sim.plateFrost) {
+      sim.bothHeldMs += dt * 1000;
+      if (sim.bothHeldMs >= PLATE_HOLD_MS && !sim.doorOpen) latchDoor(sim, sim.level.doorLatchMs ?? DOOR_LATCH_MS);
+    } else {
+      sim.bothHeldMs = 0;
+    }
+  }
+  if (puzzle === "tide" && sim.level.tide) {
+    const crate = sim.crates[0];
+    const pressed = crate ? crateOnPlate(crate, sim.level.tide.wellPlate) && sim.tideLevel === 2 : false;
+    if (pressed && !sim.doorOpen) latchDoor(sim, sim.level.doorLatchMs ?? TIDE_LATCH_MS);
+  }
+
+  if (puzzle === "tide") {
+    sim.puzzleHint = sim.tideLevel === 0 ? "潮位浅" : sim.tideLevel === 1 ? "潮位中" : "潮位深";
+  } else if (puzzle === "burn") {
+    const mid = sim.bridges.find((b) => b.id.includes("mid") || b.id.includes("2"));
+    sim.puzzleHint = mid?.collapsed ? "灰烬已落" : mid?.ignited ? "桥在燃烧" : "栈道未燃";
+  } else if (puzzle === "phase") {
+    sim.puzzleHint = sim.phase === 0 ? "熔岩闸开" : "水闸开";
+  } else if (puzzle === "gear") {
+    if (sim.gearArmedMs === null) sim.puzzleHint = "齿轮待拨";
+    else {
+      const axis = Math.min(3, 1 + Math.floor(sim.gearArmedMs / 1800));
+      sim.puzzleHint = `轴 ${axis} · ${(sim.gearArmedMs / 1000).toFixed(1)}s`;
+    }
+  } else {
+    sim.puzzleHint = "";
+  }
 }
 
 function maybeRescue(sim: SimState, intents: PairIntent): void {
@@ -246,19 +473,9 @@ export function stepSim(sim: SimState, intents: PairIntent, dt = PHYS_DT): void 
 
   stepActor(sim, sim.ember, intents.ember, EMBER_SPEED, dt);
   stepActor(sim, sim.frost, intents.frost, FROST_SPEED, dt);
+  stepPuzzles(sim, intents, dt);
   stepWisp(sim, dt);
   applyHazards(sim);
-
-  sim.plateEmber = actorStandingOnPlate(sim.ember, sim.level.plates.ember);
-  sim.plateFrost = actorStandingOnPlate(sim.frost, sim.level.plates.frost);
-  if (sim.plateEmber && sim.plateFrost) {
-    sim.bothHeldMs += dt * 1000;
-    if (sim.bothHeldMs >= PLATE_HOLD_MS && !sim.doorOpen) {
-      latchDoor(sim);
-    }
-  } else {
-    sim.bothHeldMs = 0;
-  }
   stepDoor(sim, dt * 1000);
 
   const emberExit = rectsOverlap(actorRect(sim.ember), sim.level.exits.ember) && !sim.ember.downed;
@@ -296,4 +513,4 @@ export function starsFor(sim: SimState): 1 | 2 | 3 {
   return 1;
 }
 
-export { TILE };
+export { TILE, activeHazards, solidsNow };

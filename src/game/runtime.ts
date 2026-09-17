@@ -4,6 +4,8 @@ import { createSim } from "./sim/create";
 import { starsFor, stepSim } from "./sim/step";
 import type { PairIntent, SimState } from "./sim/types";
 import { LEVEL_01 } from "./levels/level01";
+import { levelById } from "./levels/catalog";
+import type { LevelDocument } from "./sim/types";
 import { GameView } from "./view/GameView";
 import { recordClear } from "./systems/save";
 import { officialPolicy } from "./systems/replay";
@@ -23,9 +25,12 @@ export interface HudModel {
   separated: boolean;
   stars: number;
   title: string;
+  puzzleHint: string;
+  levelId: string;
 }
 
 export class GameRuntime {
+  level: LevelDocument = LEVEL_01;
   sim: SimState = createSim(LEVEL_01);
   input = new InputMap();
   view: GameView | null = null;
@@ -36,10 +41,16 @@ export class GameRuntime {
   onHud?: (hud: HudModel) => void;
   private recordedClear = false;
 
+  load(id: string): void {
+    this.level = levelById(id);
+    this.restart();
+  }
+
   restart(): void {
-    this.sim = createSim(LEVEL_01);
+    this.sim = createSim(this.level);
     this.acc = 0;
     this.recordedClear = false;
+    this.view?.resetWorld();
   }
 
   pause(): void {
@@ -75,9 +86,7 @@ export class GameRuntime {
       this.acc += dt;
       let steps = 0;
       while (this.acc >= PHYS_DT && steps < MAX_PHYS_STEPS) {
-        const intents: PairIntent = this.demo
-          ? officialPolicy(this.sim)
-          : this.input.pair();
+        const intents: PairIntent = this.demo ? officialPolicy(this.sim) : this.input.pair();
         stepSim(this.sim, intents, PHYS_DT);
         this.acc -= PHYS_DT;
         steps += 1;
@@ -102,6 +111,8 @@ export class GameRuntime {
       separated: Math.abs(this.sim.ember.x - this.sim.frost.x) > 28 * 48,
       stars: starsFor(this.sim),
       title: this.sim.level.title,
+      puzzleHint: this.sim.puzzleHint,
+      levelId: this.sim.level.id,
     });
   }
 }

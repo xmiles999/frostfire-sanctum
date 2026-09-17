@@ -4,6 +4,9 @@ import {
   COYOTE_MS,
   FALL_SPEED_MAX,
   GRAVITY,
+  ICE_ACCEL,
+  ICE_MAX_SCALE,
+  ICE_SLIDE_DRAG,
   JUMP_BUFFER_MS,
   JUMP_RELEASE_MULTIPLIER,
   JUMP_SPEED,
@@ -43,6 +46,7 @@ export function integrateActor(
   wantLeft: boolean,
   wantRight: boolean,
   wantJump: boolean,
+  ice = false,
 ): void {
   if (a.downed) {
     a.vx = 0;
@@ -57,8 +61,20 @@ export function integrateActor(
   a.jumpWasHeld = wantJump;
 
   const dir = (wantRight ? 1 : 0) - (wantLeft ? 1 : 0);
-  a.vx = dir * speed;
   if (dir !== 0) a.facing = dir as 1 | -1;
+  if (ice) {
+    a.vx += dir * ICE_ACCEL * dt;
+    if (dir === 0) {
+      const drag = ICE_SLIDE_DRAG * dt;
+      if (Math.abs(a.vx) <= drag) a.vx = 0;
+      else a.vx -= Math.sign(a.vx) * drag;
+    }
+    const cap = speed * ICE_MAX_SCALE;
+    if (a.vx > cap) a.vx = cap;
+    if (a.vx < -cap) a.vx = -cap;
+  } else {
+    a.vx = dir * speed;
+  }
 
   if (jumpPressed) a.jumpBufferMs = JUMP_BUFFER_MS;
   else a.jumpBufferMs = Math.max(0, a.jumpBufferMs - dt * 1000);
