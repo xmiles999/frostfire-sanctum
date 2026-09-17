@@ -17,7 +17,7 @@ import {
 import { makeCamera, updateCamera, type Camera } from "../engine/camera";
 import { rectsOverlap, type Rect } from "../engine/aabb";
 import { actorRect } from "../engine/physics";
-import type { ActorState, SimState } from "../sim/types";
+import type { ActorState, Hazard, SimState } from "../sim/types";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/?$/, "/");
 
@@ -37,9 +37,14 @@ function criticalUrls(): string[] {
     asset("assets/characters/frost/idle/00.png"),
     asset("assets/levels/01/bg-far.jpg"),
     asset("assets/levels/01/bg-mid.jpg"),
-    asset("assets/levels/01/lava.jpg"),
-    asset("assets/levels/01/water.jpg"),
-    asset("assets/levels/01/stone.png"),
+    asset("assets/levels/01/lava-channel.jpg"),
+    asset("assets/levels/01/water-channel.jpg"),
+    asset("assets/levels/01/lava-surface.jpg"),
+    asset("assets/levels/01/water-surface.jpg"),
+    asset("assets/levels/01/road-ember.jpg"),
+    asset("assets/levels/01/road-frost.jpg"),
+    asset("assets/levels/01/wall.jpg"),
+    asset("assets/levels/01/ceiling.jpg"),
     asset("assets/levels/01/door.png"),
     asset("assets/levels/01/altar.png"),
     asset("assets/ui/pressure-plate.png"),
@@ -76,6 +81,12 @@ export class GameView {
   private plateFrost!: Sprite;
   private altar!: Sprite;
   private doorSprites: Sprite[] = [];
+  private liquids: {
+    kind: "lava" | "water";
+    rect: Rect;
+    body: TilingSprite;
+    surface: TilingSprite;
+  }[] = [];
   private frames!: {
     ember: Record<string, Texture[]>;
     frost: Record<string, Texture[]>;
@@ -145,6 +156,36 @@ export class GameView {
     return t;
   }
 
+  private slab(tex: Texture, r: Rect, extraTop = 28, extraBottom = 8): TilingSprite {
+    const h = Math.max(r.h + extraTop + extraBottom, 8);
+    const t = new TilingSprite({ texture: tex, width: Math.max(r.w, 1), height: h });
+    t.x = r.x;
+    t.y = r.y - extraTop;
+    const ts = h / Math.max(tex.height, 1);
+    t.tileScale.set(ts);
+    return t;
+  }
+
+  private solidKind(r: Rect): "ember" | "frost" | "ceiling" | "wall" {
+    if (r.h >= r.w * 1.5) return "wall";
+    if (r.y <= TILE * 0.6) return "ceiling";
+    if (r.y >= 12 * TILE) return "frost";
+    return "ember";
+  }
+
+  private channel(tex: Texture, r: Rect, extraTop: number, extraBottom: number): TilingSprite {
+    const h = Math.max(r.h + extraTop + extraBottom, 8);
+    const t = new TilingSprite({ texture: tex, width: Math.max(r.w, 1), height: h });
+    t.x = r.x;
+    t.y = r.y - extraTop;
+    t.tileScale.set(h / Math.max(tex.height, 1));
+    return t;
+  }
+
+  private liquidPad(kind: "lava" | "water"): { extraTop: number; extraBottom: number } {
+    return kind === "lava" ? { extraTop: 20, extraBottom: 28 } : { extraTop: 16, extraBottom: 42 };
+  }
+
   private sit(tex: Texture, r: Rect, height: number): Sprite {
     const s = new Sprite(tex);
     s.anchor.set(0.5, 1);
@@ -177,7 +218,7 @@ export class GameView {
 
     this.far = new Sprite(this.tex("assets/levels/01/bg-far.jpg"));
     this.mid = new Sprite(this.tex("assets/levels/01/bg-mid.jpg"));
-    this.mid.alpha = 0.35;
+    this.mid.alpha = 0.52;
     this.ember = new Sprite(this.frames.ember.idle[0]);
     this.frost = new Sprite(this.frames.frost.idle[0]);
     this.wisp = new Sprite(this.tex("assets/fx/wisp.png"));
@@ -224,23 +265,48 @@ export class GameView {
 
   private layoutProps(sim: SimState): void {
     if (this.props.children.length > 0) return;
-    const stone = this.tex("assets/levels/01/stone.png");
-    const lava = this.tex("assets/levels/01/lava.jpg");
-    const water = this.tex("assets/levels/01/water.jpg");
+    const roadEmber = this.tex("assets/levels/01/road-ember.jpg");
+    const roadFrost = this.tex("assets/levels/01/road-frost.jpg");
+    const wall = this.tex("assets/levels/01/wall.jpg");
+    const ceiling = this.tex("assets/levels/01/ceiling.jpg");
+    const lavaChannel = this.tex("assets/levels/01/lava-channel.jpg");
+    const waterChannel = this.tex("assets/levels/01/water-channel.jpg");
+    const lavaSurface = this.tex("assets/levels/01/lava-surface.jpg");
+    const waterSurface = this.tex("assets/levels/01/water-surface.jpg");
     const doorTex = this.tex("assets/levels/01/door.png");
 
     for (const s of sim.level.solids) {
-      this.props.addChild(this.tile(stone, s));
+      const kind = this.solidKind(s);
+      if (kind === "wall") this.props.addChild(this.tile(wall, s));
+      else if (kind === "ceiling") this.props.addChild(this.slab(ceiling, s, 0, 18));
+      else if (kind === "frost") this.props.addChild(this.slab(roadFrost, s));
+      else this.props.addChild(this.slab(roadEmber, s));
     }
+    this.liquids = [];
     for (const h of sim.level.hazards) {
-      if (h.type === "lava_shallow") {
-        const pool = this.tile(lava, { x: h.rect.x, y: h.rect.y - 10, w: h.rect.w, h: h.rect.h + 18 });
-        pool.tint = 0xffcc88;
-        this.props.addChild(pool);
-      }
-      if (h.type === "water_shallow") {
-        this.props.addChild(this.tile(water, { x: h.rect.x, y: h.rect.y - 6, w: h.rect.w, h: h.rect.h + 14 }));
-      }
+      const kind = h.type === "lava_shallow" ? "lava" : h.type === "water_shallow" ? "water" : null;
+      if (!kind) continue;
+      const pad = this.liquidPad(kind);
+      const body = this.channel(
+        kind === "lava" ? lavaChannel : waterChannel,
+        h.rect,
+        pad.extraTop,
+        pad.extraBottom,
+      );
+      const surfaceH = pad.extraTop + Math.min(18, h.rect.h * 0.5);
+      const surfaceTex = kind === "lava" ? lavaSurface : waterSurface;
+      const surface = new TilingSprite({
+        texture: surfaceTex,
+        width: Math.max(h.rect.w, 1),
+        height: surfaceH,
+      });
+      surface.x = h.rect.x;
+      surface.y = h.rect.y - pad.extraTop + 3;
+      surface.alpha = kind === "lava" ? 0.58 : 0.46;
+      const sts = (surfaceH / Math.max(surfaceTex.height, 1)) * 1.15;
+      surface.tileScale.set(sts);
+      this.props.addChild(body, surface);
+      this.liquids.push({ kind, rect: h.rect, body, surface });
     }
     this.doorSprites = sim.level.gatedSolids.map((s) => {
       const d = new Sprite(doorTex);
@@ -253,10 +319,9 @@ export class GameView {
     });
     this.props.addChild(this.plateEmber, this.plateFrost, this.altar);
 
-    // 装饰立柱：不参与碰撞，让廊道有体积
-    for (const x of [11, 19, 33, 44, 61]) {
-      const col = this.tile(stone, { x: x * TILE, y: 9 * TILE, w: 18, h: 6 * TILE });
-      col.alpha = 0.55;
+    for (const x of [10.5, 25, 38, 49, 62]) {
+      const col = this.tile(wall, { x: x * TILE, y: 9 * TILE, w: 22, h: 6 * TILE });
+      col.alpha = 0.42;
       this.props.addChild(col);
     }
   }
@@ -273,10 +338,10 @@ export class GameView {
     this.far.height = this.cam.h;
     this.far.x = 0;
     this.far.y = 0;
-    this.mid.width = this.cam.w;
-    this.mid.height = this.cam.h;
-    this.mid.x = -this.cam.x * 0.08;
-    this.mid.y = -this.cam.y * 0.04;
+    this.mid.width = this.cam.w * 1.28;
+    this.mid.height = this.cam.h * 0.94;
+    this.mid.x = -this.cam.x * 0.14;
+    this.mid.y = this.cam.h * 0.08 - this.cam.y * 0.05;
 
     this.world.x = -this.cam.x;
     this.world.y = -this.cam.y;
@@ -301,6 +366,7 @@ export class GameView {
       d.alpha = 1 - doorProgress * 0.18;
     }
 
+    this.flowLiquids(dt);
     this.paintSteam(sim);
     this.paintMechanisms(sim, doorProgress);
     this.paintMarks(sim);
@@ -326,7 +392,7 @@ export class GameView {
           ? "idle"
           : actor.anim;
     const frames = set[key] ?? set.idle;
-    const fps = actor.anim === "walk" ? 12 : actor.anim === "idle" ? 8 : 10;
+    const fps = actor.anim === "walk" ? 14 : actor.anim === "idle" ? 8 : 10;
     const idx = Math.floor(actor.animTime * fps) % frames.length;
     sprite.texture = frames[idx]!;
     sprite.x = actor.x + actor.w / 2;
@@ -338,6 +404,14 @@ export class GameView {
     sprite.scale.set(s * actor.facing * (1 + squash - stretch), s * (1 - squash + stretch));
     sprite.rotation = actor.onGround ? 0 : Math.max(-0.08, Math.min(0.08, actor.vx / 4200));
     sprite.alpha = actor.invulnMs > 0 ? 0.7 : 1;
+  }
+
+  private flowLiquids(dt: number): void {
+    for (const liquid of this.liquids) {
+      const flow = liquid.kind === "lava" ? 22 : 36;
+      liquid.surface.tilePosition.x += dt * flow;
+      liquid.body.tilePosition.x += dt * flow * 0.12;
+    }
   }
 
   private paintSteam(sim: SimState): void {
@@ -501,6 +575,21 @@ export class GameView {
       g.roundRect(pf.x, pf.y - 14, pf.w * t, 6, 2);
       g.fill({ color: 0xaaddff });
     }
+    this.paintLiquids(sim);
+
+    for (const h of sim.level.hazards) {
+      if (h.type !== "ice_mist") continue;
+      const pulse = 0.14 + Math.sin(sim.timeMs * 0.005) * 0.05;
+      g.roundRect(h.rect.x, h.rect.y, h.rect.w, h.rect.h, 12);
+      g.fill({ color: 0xc8e7f4, alpha: pulse });
+      for (let i = 0; i < 6; i++) {
+        const px = h.rect.x + 8 + ((i * 41 + sim.timeMs * 0.03) % Math.max(12, h.rect.w - 16));
+        const py = h.rect.y + 10 + ((sim.timeMs * 0.04 + i * 17) % Math.max(12, h.rect.h - 20));
+        g.circle(px, py, 3 + (i % 3));
+        g.fill({ color: 0xeef8ff, alpha: 0.18 });
+      }
+    }
+
     g.roundRect(sim.level.exits.ember.x, sim.level.exits.ember.y, sim.level.exits.ember.w, sim.level.exits.ember.h, 8);
     g.fill({ color: 0xff6a1a, alpha: 0.22 });
     g.stroke({ color: 0xffb070, width: 3, alpha: 0.95 });
@@ -522,9 +611,71 @@ export class GameView {
       if (!a.onGround || Math.abs(a.vx) < 30) continue;
       const lava = sim.level.hazards.some((h) => h.type === "lava_shallow" && rectsOverlap(actorRect(a), h.rect));
       const water = sim.level.hazards.some((h) => h.type === "water_shallow" && rectsOverlap(actorRect(a), h.rect));
-      const color = lava ? 0xffaa33 : water ? 0x88ddee : 0xc2b8a3;
-      g.circle(a.x + a.w / 2, a.y + a.h, 7);
-      g.fill({ color, alpha: 0.28 });
+      const footX = a.x + a.w / 2;
+      const footY = a.y + a.h;
+      if (lava) {
+        g.ellipse(footX, footY - 2, 11, 5);
+        g.fill({ color: 0xffc266, alpha: 0.38 });
+        g.circle(footX + 4, footY - 10, 3.5);
+        g.fill({ color: 0xffe29a, alpha: 0.45 });
+      } else if (water) {
+        g.ellipse(footX, footY - 1, 14, 4);
+        g.stroke({ color: 0xc5eef8, width: 2, alpha: 0.42 });
+      } else {
+        g.circle(footX, footY, 7);
+        g.fill({ color: 0xc2b8a3, alpha: 0.28 });
+      }
+    }
+  }
+
+  private paintLiquids(sim: SimState): void {
+    const g = this.overlay;
+    for (const h of sim.level.hazards) {
+      if (h.type === "lava_shallow") this.paintLavaFx(g, h, sim.timeMs);
+      if (h.type === "water_shallow") this.paintRiverFx(g, h, sim.timeMs);
+    }
+  }
+
+  private paintLavaFx(g: Graphics, h: Hazard, timeMs: number): void {
+    const r = h.rect;
+    const pulse = 0.18 + Math.sin(timeMs * 0.006) * 0.07;
+    g.roundRect(r.x - 2, r.y - 6, r.w + 4, 12, 4);
+    g.fill({ color: 0xff6a1a, alpha: pulse });
+    g.rect(r.x, r.y + 2, r.w, 3);
+    g.fill({ color: 0xffdd88, alpha: 0.22 + Math.sin(timeMs * 0.01) * 0.06 });
+
+    const count = Math.max(5, Math.floor(r.w / 58));
+    for (let i = 0; i < count; i++) {
+      const t = ((timeMs * 0.00032 + i * 0.19) % 1 + 1) % 1;
+      const px = r.x + 10 + ((i * 73 + timeMs * 0.018) % Math.max(12, r.w - 20));
+      const py = r.y + 6 - t * 26;
+      const rad = 2 + (i % 3) + (1 - t) * 2;
+      g.circle(px, py, rad);
+      g.fill({ color: 0xffc266, alpha: 0.42 * (1 - t) });
+      g.circle(px - 0.5, py - 0.5, rad * 0.4);
+      g.fill({ color: 0xfff4d2, alpha: 0.55 * (1 - t) });
+    }
+  }
+
+  private paintRiverFx(g: Graphics, h: Hazard, timeMs: number): void {
+    const r = h.rect;
+    const sheen = 0.1 + Math.sin(timeMs * 0.0035) * 0.04;
+    g.roundRect(r.x, r.y - 8, r.w, 10, 3);
+    g.fill({ color: 0xd7f3fb, alpha: sheen });
+
+    const bands = Math.max(3, Math.floor(r.w / 90));
+    for (let i = 0; i < bands; i++) {
+      const travel = ((timeMs * 0.045 + i * 47) % Math.max(24, r.w + 40)) - 20;
+      const py = r.y - 2 + Math.sin(timeMs * 0.004 + i) * 3;
+      g.ellipse(r.x + travel, py, 22 + (i % 3) * 6, 3.5);
+      g.stroke({ color: i % 2 === 0 ? 0xe8f7ff : 0x9ad4e8, width: 1.5, alpha: 0.28 });
+    }
+    const sparkles = Math.max(4, Math.floor(r.w / 80));
+    for (let i = 0; i < sparkles; i++) {
+      const px = r.x + 8 + ((i * 53 + timeMs * 0.03) % Math.max(12, r.w - 16));
+      const py = r.y - 4 + Math.sin(timeMs * 0.008 + i * 1.7) * 5;
+      g.circle(px, py, 1.4);
+      g.fill({ color: 0xf4fffe, alpha: 0.35 + Math.sin(timeMs * 0.012 + i) * 0.12 });
     }
   }
 }

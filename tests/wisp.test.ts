@@ -40,6 +40,6 @@ describe("heat-seeking wisp", () => {
     sim.frost.x = 20 * TILE;
     steps(sim, 400);
     expect(sim.wisp.phase).toBe("idle");
-    expect(sim.wisp.x).toBeCloseTo(4 * TILE, 0);
+    expect(Math.abs(sim.wisp.x - 4 * TILE)).toBeLessThan(3.5 * TILE);
   });
 });

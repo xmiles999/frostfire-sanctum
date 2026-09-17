@@ -15,6 +15,8 @@ import {
   TILE,
   WISP_ACQUIRE_MS,
   WISP_LOST_MS,
+  WISP_PATROL_AMP,
+  WISP_PATROL_SPEED,
   WISP_RANGE,
   WISP_SPEED,
 } from "../engine/constants";
@@ -63,6 +65,11 @@ function stepWisp(sim: SimState, dt: number): void {
       w.phase = "acquire";
       w.target = nearest.id;
       w.acquireMs = WISP_ACQUIRE_MS;
+    } else {
+      if (w.x >= w.nestX + WISP_PATROL_AMP) w.facing = -1;
+      else if (w.x <= w.nestX - WISP_PATROL_AMP) w.facing = 1;
+      w.x += w.facing * WISP_PATROL_SPEED * dt;
+      w.y += (w.nestY - w.y) * Math.min(1, 6 * dt);
     }
   } else if (w.phase === "acquire") {
     w.acquireMs -= dt * 1000;
@@ -200,6 +207,10 @@ function stepActor(
   );
   actor.invulnMs = Math.max(0, actor.invulnMs - dt * 1000);
   actor.animTime += dt;
+  const worldH = sim.level.size.h * TILE;
+  if (!actor.downed && actor.y > worldH + TILE) {
+    downActor(sim, actor, "void");
+  }
   if (actor.downed) actor.anim = "downed";
   else if (!actor.onGround) actor.anim = actor.vy < 0 ? "jump" : "fall";
   else if (actor.landMs > 0) actor.anim = "land";

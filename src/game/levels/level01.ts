@@ -22,7 +22,7 @@ export const L01 = {
   exitEmberX: 67.2 * T,
   exitFrostX: 67.2 * T,
   gapLeft: 17 * T,
-  gapRight: 20 * T,
+  gapRight: 20.2 * T,
 };
 
 export const LEVEL_01: LevelDocument = {
@@ -43,17 +43,24 @@ export const LEVEL_01: LevelDocument = {
     R(0, 15, 72, 1),
     R(0, 0, 1, 16),
     R(71, 0, 1, 16),
-    // ember spawn ledge (3-tile drop onto main floor)
-    R(1, 5, 6, 1),
-    // ember main floor through the latch door to the hearth niche
-    R(1, 8, 70, 1),
+    // ember spawn ledge, then segmented road with a void gap and a rise
+    R(1, 5, 5, 1),
+    R(1, 8, 16, 1),
+    R(20.2, 8, 15.8, 1),
+    R(36, 6.5, 8, 1),
+    R(44, 8, 12, 1),
+    R(57.2, 8, 2.1, 1),
+    R(61, 8, 2.1, 1),
+    R(64.6, 8, 6.4, 1),
   ],
   gatedSolids: [R(56, 1, 1, 8), R(56, 9, 1, 6)],
   hazards: [
-    { id: "water_spawn", type: "water_shallow", rect: R(1, 14, 10, 1) },
-    { id: "water_mid", type: "water_shallow", rect: R(12, 14, 6, 1) },
+    { id: "water_spawn", type: "water_shallow", rect: R(1, 14, 16, 1) },
+    { id: "lava_jump", type: "lava_shallow", rect: R(17.2, 14.5, 3.4, 0.5) },
+    { id: "water_mid", type: "water_shallow", rect: R(21, 14, 19, 1) },
+    { id: "gap_mist", type: "ice_mist", rect: R(17, 9, 3.2, 5) },
     { id: "lava_lure", type: "lava_shallow", rect: R(22, 7.55, 14, 0.5) },
-    { id: "steam", type: "steam_hot", rect: R(42, 10, 2.2, 5) },
+    { id: "steam", type: "steam_hot", rect: R(42, 10, 3, 5) },
     { id: "lava_exit", type: "lava_shallow", rect: R(58, 7.55, 8, 0.5) },
     { id: "water_exit", type: "water_shallow", rect: R(58, 14, 8, 1) },
   ],
