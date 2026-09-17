@@ -435,28 +435,15 @@ function stepPuzzles(sim: SimState, intents: PairIntent, dt: number): void {
   }
 
   if (puzzle === "tide") {
-    const crate = sim.crates[0];
-    const seated = crate && sim.level.tide ? crateOnPlate(crate, sim.level.tide.wellPlate) && sim.tideLevel === 2 : false;
-    if (sim.doorOpen) {
-      sim.puzzleHint = sim.tideLevel === 1 ? "门已开 · 冲槽" : "门已开 · 烬再推过拨杆到中档";
-    } else if (sim.tideLevel === 0) {
-      sim.puzzleHint = "浅 · 朔推箱到井，烬走上高台推过拨杆";
-    } else if (sim.tideLevel === 2) {
-      sim.puzzleHint = seated ? "井板已压 · 烬离开后再推过拨杆" : "深 · 朔把箱推进石圈水井";
-    } else {
-      sim.puzzleHint = "中 · 箱须在深水中压井板";
-    }
+    sim.puzzleHint = sim.tideLevel === 0 ? "潮位浅" : sim.tideLevel === 1 ? "潮位中" : "潮位深";
   } else if (puzzle === "burn") {
     const mid = sim.bridges.find((b) => b.id.includes("mid") || b.id.includes("2"));
-    sim.puzzleHint = mid?.collapsed ? "灰烬已落" : mid?.ignited ? "桥在燃烧" : "栈道未燃";
+    sim.puzzleHint = mid?.collapsed ? "灰烬" : mid?.ignited ? "燃烧" : "栈道";
   } else if (puzzle === "phase") {
-    sim.puzzleHint = sim.phase === 0 ? "熔岩闸开" : "水闸开";
+    sim.puzzleHint = sim.phase === 0 ? "熔岩闸" : "水闸";
   } else if (puzzle === "gear") {
-    if (sim.gearArmedMs === null) sim.puzzleHint = "齿轮待拨";
-    else {
-      const axis = Math.min(3, 1 + Math.floor(sim.gearArmedMs / 1800));
-      sim.puzzleHint = `轴 ${axis} · ${(sim.gearArmedMs / 1000).toFixed(1)}s`;
-    }
+    if (sim.gearArmedMs === null) sim.puzzleHint = "齿轮停";
+    else sim.puzzleHint = `轴 ${Math.min(3, 1 + Math.floor(sim.gearArmedMs / 1800))}`;
   } else {
     sim.puzzleHint = "";
   }

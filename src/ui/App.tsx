@@ -64,7 +64,6 @@ function HowTo({ onBack, onPlay }: { onBack: () => void; onPlay: () => void }) {
           烬：<kbd>W A S D</kbd> 移动跳跃，<kbd>J</kbd> 交互。朔：<kbd>↑ ← ↓ →</kbd>，<kbd>;</kbd> 交互。
         </p>
         <p>第 1 关教伤害与诱敌。之后每关加一条新规则：潮位推箱、点燃木桥、反相双闸、延迟齿轮。</p>
-        <p>第 2 关拨杆：走上高台<strong>推过去就会拨</strong>，不用按 J。木桥点燃仍用烬的 <kbd>J</kbd>。</p>
         <p>
           关卡左上有 <strong>返回 / 暂停 / 重开</strong>。<kbd>Esc</kbd> 暂停，游玩中长按 <kbd>R</kbd> 0.4 秒重开，暂停或结算时点按 <kbd>R</kbd> 立即重开。1–8 关没有检查点。单人倒地有 8 秒救援窗（祭坛）。
         </p>

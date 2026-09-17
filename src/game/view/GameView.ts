@@ -5,13 +5,16 @@ import {
   Container,
   Graphics,
   Sprite,
-  Text,
   Texture,
   TilingSprite,
 } from "pixi.js";
 import {
+  BRIDGE_BURN_MS,
+  BRIDGE_STAND_IGNITE_MS,
   DOOR_LATCH_MS,
   DOOR_MOTION_MS,
+  IGNITE_RANGE,
+  PHASE_LOCK_MS,
   PLATE_HOLD_MS,
   TILE,
 } from "../engine/constants";
@@ -84,7 +87,6 @@ export class GameView {
   private plateFrost!: Sprite;
   private altar!: Sprite;
   private doorSprites: Sprite[] = [];
-  private worldSigns = new Map<string, Text>();
   private liquids: {
     kind: "lava" | "water";
     rect: Rect;
@@ -357,6 +359,9 @@ export class GameView {
     this.world.x = -this.cam.x;
     this.world.y = -this.cam.y;
 
+    const showDual = sim.level.puzzle !== "tide";
+    this.plateEmber.visible = showDual;
+    this.plateFrost.visible = showDual;
     this.plateEmber.x = sim.level.plates.ember.x + sim.level.plates.ember.w / 2;
     this.plateEmber.y = sim.level.plates.ember.y + sim.level.plates.ember.h;
     this.plateEmber.tint = sim.plateEmber ? 0xffe0a0 : 0xffffff;
@@ -381,7 +386,6 @@ export class GameView {
     this.paintSteam(sim);
     this.paintMechanisms(sim, doorProgress);
     this.paintPuzzles(sim);
-    this.syncWorldSigns(sim);
     this.paintMarks(sim);
     this.wisp.visible = sim.wisp.nestX > 0;
     this.pose(this.ember, sim.ember, "ember");
@@ -526,10 +530,13 @@ export class GameView {
       }
     }
 
-    const platePairs = [
-      { rect: sim.level.plates.ember, active: sim.plateEmber, color: 0xffa45f, start: Math.PI },
-      { rect: sim.level.plates.frost, active: sim.plateFrost, color: 0x8edfff, start: 0 },
-    ];
+    const platePairs =
+      sim.level.puzzle === "tide"
+        ? []
+        : [
+            { rect: sim.level.plates.ember, active: sim.plateEmber, color: 0xffa45f, start: Math.PI },
+            { rect: sim.level.plates.frost, active: sim.plateFrost, color: 0x8edfff, start: 0 },
+          ];
     const holdT = Math.min(1, sim.bothHeldMs / PLATE_HOLD_MS);
     for (const plate of platePairs) {
       const cx = plate.rect.x + plate.rect.w / 2;
@@ -565,6 +572,10 @@ export class GameView {
       }
       g.roundRect(cx - 6, cy - 8 + doorProgress * 4, 12, 16 - doorProgress * 7, 3);
       g.fill({ color, alpha: 0.9 });
+      if (sim.level.puzzle === "tide") {
+        const gem = this.tideSeated(sim);
+        this.paintDiamond(g, cx, cy, gem ? 9 : 7, gem ? 0xf0d078 : 0x6a5a38, gem ? 1 : 0.75);
+      }
     }
 
     for (const [plate, active] of [
@@ -671,19 +682,33 @@ export class GameView {
     }
   }
 
-  private paintWell(sim: SimState, g: Graphics): void {
+  private paintDiamond(g: Graphics, cx: number, cy: number, s: number, color: number, alpha: number): void {
+    g.poly([cx, cy - s, cx + s, cy, cx, cy + s, cx - s, cy]);
+    g.fill({ color, alpha });
+  }
+
+  private tideSeated(sim: SimState): boolean {
     const plate = sim.level.tide?.wellPlate;
-    if (!plate) return;
     const crate = sim.crates[0];
-    const seated =
-      !!crate &&
+    if (!plate || !crate) return false;
+    return (
       crate.onGround &&
       crate.x + crate.w / 2 >= plate.x &&
       crate.x + crate.w / 2 <= plate.x + plate.w &&
-      sim.tideLevel === 2;
+      sim.tideLevel === 2
+    );
+  }
+
+  private paintWell(sim: SimState, g: Graphics): void {
+    const plate = sim.level.tide?.wellPlate;
+    if (!plate) return;
+    const seated = this.tideSeated(sim);
     const x = plate.x - 22;
     const w = plate.w + 44;
     const lipY = plate.y - 18;
+    const pulse = 0.55 + Math.sin(sim.timeMs * 0.008) * 0.25;
+    g.roundRect(22 * TILE, plate.y + 10, plate.x - 22 * TILE, 7, 3);
+    g.fill({ color: 0x2a241c, alpha: 0.42 });
     g.roundRect(x - 8, lipY + 14, w + 16, 28, 6);
     g.fill({ color: 0x2a2620, alpha: 0.55 });
     g.roundRect(x, lipY, w, 26, 10);
@@ -691,17 +716,20 @@ export class GameView {
     g.stroke({ color: 0xe4d3b0, width: 3, alpha: 0.95 });
     g.roundRect(x + 12, lipY + 8, w - 24, 16, 8);
     g.fill({ color: 0x12161c, alpha: 0.96 });
+    for (const [i, hy] of [lipY + 10, lipY + 16, lipY + 22].entries()) {
+      g.rect(x + 14, hy, 8, 2);
+      g.rect(x + w - 22, hy, 8, 2);
+      g.fill({ color: i === sim.tideLevel ? 0x7ec8a0 : 0x3a4a40, alpha: 0.85 });
+    }
     const waterH = sim.tideLevel === 0 ? 5 : sim.tideLevel === 1 ? 11 : 15;
     g.roundRect(x + 14, lipY + 22 - waterH, w - 28, waterH, 5);
     g.fill({ color: sim.tideLevel === 2 ? 0x163848 : 0x2f6d82, alpha: 0.88 });
     g.roundRect(x + 18, lipY + 22 - waterH, w - 36, 3, 2);
     g.fill({ color: 0xc5eaf4, alpha: 0.35 + Math.sin(sim.timeMs * 0.006) * 0.08 });
-    g.roundRect(plate.x + 10, plate.y + 2, plate.w - 20, Math.max(8, plate.h - 2), 3);
-    g.fill({ color: seated ? 0xf0d078 : 0x7a6238, alpha: 0.95 });
-    if (seated) {
-      g.roundRect(plate.x + 10, plate.y + 2, plate.w - 20, 8, 3);
-      g.stroke({ color: 0xfff3c0, width: 2, alpha: 0.85 });
-    }
+    const socket = seated ? 0xf0d078 : sim.tideLevel === 2 ? 0xc9a24a : 0x7a6238;
+    g.roundRect(plate.x + 6, plate.y, plate.w - 12, Math.max(10, plate.h), 4);
+    g.fill({ color: socket, alpha: seated ? 1 : 0.55 + (sim.tideLevel === 2 ? pulse * 0.4 : 0.15) });
+    this.paintDiamond(g, plate.x + plate.w / 2, plate.y + 8, seated ? 11 : 9, seated ? 0xfff3c0 : 0x3a2e18, 0.95);
     g.roundRect(x + 4, lipY - 78, 10, 78, 3);
     g.roundRect(x + w - 14, lipY - 78, 10, 78, 3);
     g.fill({ color: 0x5c5348, alpha: 1 });
@@ -713,6 +741,28 @@ export class GameView {
     g.circle(x + w / 2, lipY - 24, 7);
     g.fill({ color: 0x6a8ea0, alpha: 0.8 });
     g.stroke({ color: 0xd7eef4, width: 1.5, alpha: 0.7 });
+    this.paintTideConduit(sim, g, plate, seated);
+  }
+
+  private paintTideConduit(sim: SimState, g: Graphics, plate: Rect, seated: boolean): void {
+    const doors = sim.level.gatedSolids;
+    if (!doors.length) return;
+    const sx = plate.x + plate.w;
+    const sy = plate.y + 8;
+    const dx = doors[0]!.x;
+    const water = sim.tideLevel === 2;
+    g.roundRect(sx, sy - 3, Math.max(8, dx - sx), 6, 3);
+    g.fill({ color: water ? 0x2f6d82 : 0x3a3530, alpha: water ? 0.7 : 0.4 });
+    if (seated) {
+      const t = (sim.timeMs * 0.08) % Math.max(24, dx - sx);
+      g.roundRect(sx + t, sy - 4, 18, 8, 3);
+      g.fill({ color: 0xf0d078, alpha: 0.85 });
+    }
+    for (const door of doors) {
+      const dy = door.y + door.h / 2;
+      g.roundRect(door.x - 5, Math.min(sy, dy), 6, Math.abs(dy - sy), 3);
+      g.fill({ color: seated ? 0xf0d078 : water ? 0x2f6d82 : 0x3a3530, alpha: seated ? 0.85 : 0.45 });
+    }
   }
 
   private paintCrate(sim: SimState, g: Graphics, crate: CrateState): void {
@@ -722,8 +772,8 @@ export class GameView {
     g.roundRect(crate.x + 5, crate.y + 6, crate.w - 10, 5, 2);
     g.roundRect(crate.x + 5, crate.y + crate.h - 11, crate.w - 10, 5, 2);
     g.fill({ color: 0x4d4538, alpha: 0.95 });
-    g.rect(crate.x + crate.w / 2 - 3, crate.y + 4, 6, crate.h - 8);
-    g.fill({ color: 0x3f3a32, alpha: 0.85 });
+    this.paintDiamond(g, crate.x + crate.w / 2, crate.y + crate.h / 2, 9, 0xf0d078, 0.95);
+    this.paintDiamond(g, crate.x + crate.w / 2, crate.y + crate.h / 2, 4, 0x3a2e18, 0.9);
     if (sim.tideLevel > 0) {
       g.roundRect(crate.x + 6, crate.y + 8, crate.w - 12, 7, 2);
       g.fill({ color: 0x6aa0c8, alpha: 0.4 + sim.tideLevel * 0.18 });
@@ -734,6 +784,8 @@ export class GameView {
     const r = lever.rect;
     const cx = r.x + r.w * 0.42;
     const baseY = r.y + r.h;
+    g.roundRect(r.x - 48, baseY + 1, 70, 7, 3);
+    g.fill({ color: 0x2c261e, alpha: 0.55 });
     g.roundRect(r.x - 10, baseY - 18, r.w + 28, 22, 6);
     g.fill({ color: 0x4a453c, alpha: 1 });
     g.stroke({ color: 0xd7c6a4, width: 2, alpha: 0.9 });
@@ -750,87 +802,47 @@ export class GameView {
       g.fill({ color: sim.tideLevel === 2 ? 0x1f5a72 : 0x4aa0b8, alpha: 0.95 });
       for (const [i, gy] of [gaugeY + 46, gaugeY + 26, gaugeY + 8].entries()) {
         g.rect(gaugeX - 5, gy, 5, 2);
-        g.fill({ color: i === sim.tideLevel ? 0xffe08a : 0x8a8f92, alpha: 1 });
+        g.fill({ color: i === sim.tideLevel ? 0x7ec8a0 : 0x3a4a40, alpha: 1 });
+      }
+      const well = sim.level.tide?.wellPlate;
+      if (well) {
+        const wet = sim.tideLevel === 2;
+        g.roundRect(gaugeX + 6, gaugeY + 64, 4, well.y - (gaugeY + 64), 2);
+        g.fill({ color: wet ? 0x2f6d82 : 0x3a3530, alpha: wet ? 0.65 : 0.35 });
       }
     } else {
       g.roundRect(gaugeX + 3, gaugeY + 8, 10, sim.gearArmedMs !== null ? 48 : 10, 3);
       g.fill({ color: sim.gearArmedMs !== null ? 0xe08a3a : 0x6a645a, alpha: 0.95 });
     }
+    const idle =
+      (lever.kind === "tide" && sim.tideLevel === 0) || (lever.kind === "gear" && sim.gearArmedMs === null);
+    const wobble = idle ? Math.sin(sim.timeMs * 0.007) * 0.1 : 0;
     const angle =
-      lever.kind === "tide"
+      (lever.kind === "tide"
         ? sim.tideLevel === 0
-          ? -1.15
+          ? -2.55
           : sim.tideLevel === 2
             ? 1.05
             : 0.22
         : sim.gearArmedMs !== null
           ? 0.9
-          : -0.95;
-    const len = 62;
+          : -2.55) + wobble;
+    const len = 70;
     const c = Math.cos(angle);
     const s = Math.sin(angle);
-    const nx = -s * 5;
-    const ny = c * 5;
+    const nx = -s * 6;
+    const ny = c * 6;
     const hx = cx + c * len;
-    const hy = r.y + 10 + s * len;
-    g.poly([cx + nx, r.y + 10 + ny, hx + nx, hy + ny, hx - nx, hy - ny, cx - nx, r.y + 10 - ny]);
+    const hy = r.y + 18 + s * len;
+    g.poly([cx + nx, r.y + 18 + ny, hx + nx, hy + ny, hx - nx, hy - ny, cx - nx, r.y + 18 - ny]);
     g.fill({ color: lever.kind === "tide" ? 0xc4a36a : 0xb0a898, alpha: 1 });
     g.stroke({ color: 0xf0e2c4, width: 1.5, alpha: 0.85 });
-    g.circle(cx, r.y + 10, 7);
+    g.circle(cx, r.y + 18, 8);
     g.fill({ color: 0x8a7a58, alpha: 1 });
     g.stroke({ color: 0xf2e6c8, width: 2, alpha: 0.9 });
-    g.circle(hx, hy, 9);
+    g.circle(hx, hy, 11);
     g.fill({ color: 0xe8dcc4, alpha: 1 });
     g.stroke({ color: 0x5a4030, width: 2, alpha: 0.85 });
-    g.roundRect(cx - 36, r.y - 52, 72, 22, 4);
-    g.fill({ color: 0x2a2218, alpha: 0.82 });
-    g.stroke({ color: 0xe8d7a8, width: 1.5, alpha: 0.9 });
-  }
-
-  private worldSign(id: string, text: string): Text {
-    let sign = this.worldSigns.get(id);
-    if (!sign) {
-      sign = new Text({
-        text,
-        style: {
-          fontFamily: "Noto Sans SC, Source Han Sans SC, sans-serif",
-          fontSize: 13,
-          fill: 0xfff4dc,
-          fontWeight: "600",
-          stroke: { color: 0x140f0a, width: 4 },
-        },
-      });
-      sign.anchor.set(0.5, 1);
-      this.world.addChild(sign);
-      this.worldSigns.set(id, sign);
-    }
-    sign.text = text;
-    return sign;
-  }
-
-  private syncWorldSigns(sim: SimState): void {
-    const seen = new Set<string>();
-    for (const lever of sim.level.levers ?? []) {
-      const id = `lever:${lever.id}`;
-      seen.add(id);
-      const sign = this.worldSign(id, lever.kind === "tide" ? "推过拨杆" : "推过启动");
-      sign.x = lever.rect.x + lever.rect.w / 2;
-      sign.y = lever.rect.y - 32;
-      sign.alpha = 0.88 + Math.sin(sim.timeMs * 0.008) * 0.1;
-    }
-    const well = sim.level.tide?.wellPlate;
-    if (well) {
-      seen.add("well");
-      const sign = this.worldSign("well", "推箱入井");
-      sign.x = well.x + well.w / 2;
-      sign.y = well.y - 88;
-      sign.alpha = 0.88;
-    }
-    for (const [id, sign] of this.worldSigns) {
-      if (seen.has(id)) continue;
-      sign.destroy();
-      this.worldSigns.delete(id);
-    }
   }
 
   private paintPuzzles(sim: SimState): void {
@@ -846,65 +858,279 @@ export class GameView {
         g.stroke({ color: 0x8fd4ea, width: 2, alpha: 0.7 });
       }
     }
-    for (const spec of sim.level.bridges ?? []) {
-      const rt = sim.bridges.find((b) => b.id === spec.id);
-      if (rt?.collapsed) continue;
-      const burning = rt?.ignited;
-      g.roundRect(spec.rect.x, spec.rect.y - 8, spec.rect.w, spec.rect.h + 10, 4);
-      g.fill({ color: burning ? 0xc45a22 : spec.oily ? 0x3a2414 : 0x6a4a2a, alpha: 0.95 });
-      if (burning) {
-        g.roundRect(spec.rect.x + 4, spec.rect.y - 16, spec.rect.w - 8, 10, 3);
-        g.fill({ color: 0xffb040, alpha: 0.45 });
-      }
-    }
-    for (const ash of sim.ashSolids) {
-      g.roundRect(ash.x, ash.y - 6, ash.w, ash.h + 8, 5);
-      g.fill({ color: 0x5b534c, alpha: 0.95 });
-    }
+    this.paintBridges(sim, g);
     if (sim.level.tide) this.paintWell(sim, g);
     for (const crate of sim.crates) this.paintCrate(sim, g, crate);
     for (const lever of sim.level.levers ?? []) this.paintLever(sim, g, lever);
-    for (const plate of sim.level.extraPlates ?? []) {
-      const on = sim.extraHeld[plate.id];
-      g.roundRect(plate.rect.x, plate.rect.y - 4, plate.rect.w, plate.rect.h + 6, 5);
-      g.fill({ color: on ? (plate.who === "ember" ? 0xffa45f : 0x8edfff) : 0x6a645a, alpha: 0.85 });
+    this.paintPhaseMachine(sim, g);
+    this.paintHoldGates(sim, g);
+    this.paintGearMachine(sim, g);
+  }
+
+  private paintChevron(g: Graphics, cx: number, cy: number, s: number, color: number, alpha: number): void {
+    g.poly([cx, cy - s, cx + s, cy + s * 0.55, cx, cy + s * 0.12, cx - s, cy + s * 0.55]);
+    g.fill({ color, alpha });
+  }
+
+  private paintLink(
+    g: Graphics,
+    ax: number,
+    ay: number,
+    bx: number,
+    by: number,
+    lit: boolean,
+    color: number,
+    timeMs: number,
+  ): void {
+    const x0 = Math.min(ax, bx);
+    const y0 = Math.min(ay, by);
+    g.roundRect(x0, ay - 2.5, Math.max(6, Math.abs(bx - ax)), 5, 2);
+    g.fill({ color: lit ? color : 0x3a3530, alpha: lit ? 0.72 : 0.36 });
+    g.roundRect(bx - 2.5, y0, 5, Math.max(6, Math.abs(by - ay)), 2);
+    g.fill({ color: lit ? color : 0x3a3530, alpha: lit ? 0.72 : 0.36 });
+    if (!lit) return;
+    const span = Math.max(24, Math.abs(bx - ax) + Math.abs(by - ay));
+    const t = (timeMs * 0.09) % span;
+    const px = ax + Math.sign(bx - ax || 1) * Math.min(t, Math.abs(bx - ax));
+    const py = t <= Math.abs(bx - ax) ? ay : ay + Math.sign(by - ay || 1) * (t - Math.abs(bx - ax));
+    g.roundRect(px - 5, py - 3.5, 12, 7, 3);
+    g.fill({ color, alpha: 0.9 });
+  }
+
+  private paintBridges(sim: SimState, g: Graphics): void {
+    for (const spec of sim.level.bridges ?? []) {
+      if (spec.ashRect && !sim.ashSolids.some((a) => a.x === spec.ashRect!.x && a.y === spec.ashRect!.y)) {
+        const pit = spec.ashRect;
+        g.roundRect(pit.x + 6, pit.y - 2, pit.w - 12, pit.h + 6, 4);
+        g.fill({ color: 0x1a1612, alpha: 0.72 });
+        this.paintDiamond(g, pit.x + pit.w / 2, pit.y + 6, 8, 0x3a2e18, 0.9);
+      }
     }
-    for (const way of sim.level.oneWays ?? []) {
-      g.roundRect(way.rect.x, way.rect.y, way.rect.w, way.rect.h, 3);
-      g.fill({ color: 0x9a8b6a, alpha: 0.55 });
-    }
-    if (sim.level.phaseGates) {
-      const lavaOpen = sim.phase === 0;
-      for (const gate of sim.level.phaseGates) {
-        const open = gate.side === "lava" ? lavaOpen : !lavaOpen;
-        if (open) continue;
-        for (const r of gate.rects) {
-          g.roundRect(r.x, r.y, r.w, r.h, 3);
-          g.fill({ color: gate.side === "lava" ? 0xb85a28 : 0x3a7a92, alpha: 0.88 });
+    for (const spec of sim.level.bridges ?? []) {
+      const rt = sim.bridges.find((b) => b.id === spec.id);
+      if (rt?.collapsed) continue;
+      const r = spec.rect;
+      const burning = Boolean(rt?.ignited);
+      const plank = burning ? 0xc45a22 : spec.oily ? 0x3a2414 : 0x6a4a2a;
+      g.roundRect(r.x, r.y - 8, r.w, r.h + 10, 4);
+      g.fill({ color: plank, alpha: 0.96 });
+      g.stroke({ color: spec.oily ? 0x2a1810 : 0xc4a070, width: 2, alpha: 0.7 });
+      const planks = Math.max(3, Math.floor(r.w / 28));
+      for (let i = 1; i < planks; i++) {
+        g.rect(r.x + (r.w * i) / planks, r.y - 6, 2, r.h + 6);
+        g.fill({ color: 0x1c140e, alpha: 0.45 });
+      }
+      if (spec.oily) {
+        const sheen = 0.18 + Math.sin(sim.timeMs * 0.006) * 0.08;
+        g.roundRect(r.x + 10, r.y - 4, r.w - 20, 5, 2);
+        g.fill({ color: 0x1a0e08, alpha: 0.85 });
+        g.roundRect(r.x + 16, r.y - 6, r.w - 32, 3, 2);
+        g.fill({ color: 0x6a3a14, alpha: sheen });
+        this.paintDiamond(g, r.x + r.w / 2, r.y + 6, 9, burning ? 0xffd078 : 0x8a5a28, 0.95);
+        if (spec.ashRect) {
+          this.paintLink(
+            g,
+            r.x + r.w / 2,
+            r.y + 8,
+            spec.ashRect.x + spec.ashRect.w / 2,
+            spec.ashRect.y + 6,
+            burning || Boolean(rt?.collapsed),
+            0xe08a3a,
+            sim.timeMs,
+          );
+        }
+        const emberC = { x: sim.ember.x + sim.ember.w / 2, y: sim.ember.y + sim.ember.h / 2 };
+        const inRange =
+          !sim.ember.downed &&
+          Math.abs(emberC.x - (r.x + r.w / 2)) <= 2.2 * TILE &&
+          Math.abs(emberC.y - (r.y + r.h / 2)) <= IGNITE_RANGE;
+        const torchX = r.x + r.w / 2;
+        const torchY = r.y - 3.6 * TILE;
+        g.roundRect(torchX - 7, torchY - 18, 14, 22, 3);
+        g.fill({ color: 0x4a3a2a, alpha: 1 });
+        g.circle(torchX, torchY - 22, inRange || burning ? 11 : 7);
+        g.fill({ color: inRange || burning ? 0xffb040 : 0x6a4030, alpha: inRange ? 0.95 : 0.7 });
+        if (inRange && !burning) {
+          const pulse = 0.45 + Math.sin(sim.timeMs * 0.02) * 0.25;
+          g.circle(torchX, torchY - 28, 6 + pulse * 4);
+          g.fill({ color: 0xffe08a, alpha: pulse });
+          this.paintLink(g, torchX, torchY - 18, r.x + r.w / 2, r.y - 4, true, 0xffa45f, sim.timeMs);
+        }
+        if (!burning && rt && rt.burnMs > 0) {
+          const heat = Math.min(1, rt.burnMs / BRIDGE_STAND_IGNITE_MS);
+          g.roundRect(r.x + 8, r.y - 18, (r.w - 16) * heat, 5, 2);
+          g.fill({ color: 0xff8a3a, alpha: 0.9 });
+        }
+      }
+      if (burning && rt) {
+        const t = Math.min(1, rt.burnMs / BRIDGE_BURN_MS);
+        g.roundRect(r.x + 4, r.y - 18, r.w - 8, 10, 3);
+        g.fill({ color: 0xffb040, alpha: 0.4 + t * 0.35 });
+        for (let i = 0; i < 5; i++) {
+          const px = r.x + 12 + ((i * 37 + sim.timeMs * 0.04) % Math.max(12, r.w - 24));
+          const py = r.y - 10 - ((sim.timeMs * 0.05 + i * 11) % 22);
+          g.circle(px, py, 3 + (i % 2));
+          g.fill({ color: 0xffe08a, alpha: 0.55 });
+        }
+        if (spec.ashRect) {
+          const fall = ((sim.timeMs * 0.12) % 1 + 1) % 1;
+          const ax = spec.ashRect.x + spec.ashRect.w / 2;
+          const ay = spec.ashRect.y;
+          g.circle(r.x + r.w / 2 + (ax - r.x - r.w / 2) * fall, r.y + (ay - r.y) * fall, 4);
+          g.fill({ color: 0xc45a22, alpha: 0.8 * (1 - fall) });
         }
       }
     }
+    for (const ash of sim.ashSolids) {
+      g.roundRect(ash.x, ash.y - 10, ash.w, ash.h + 12, 6);
+      g.fill({ color: 0x5b534c, alpha: 0.96 });
+      g.roundRect(ash.x + 8, ash.y - 16, ash.w - 16, 10, 4);
+      g.fill({ color: 0x3a3530, alpha: 0.8 });
+      this.paintDiamond(g, ash.x + ash.w / 2, ash.y, 10, 0xf0d078, 0.95);
+    }
+  }
+
+  private paintPhaseMachine(sim: SimState, g: Graphics): void {
+    for (const way of sim.level.oneWays ?? []) {
+      g.roundRect(way.rect.x, way.rect.y, way.rect.w, way.rect.h, 3);
+      g.fill({ color: 0x9a8b6a, alpha: 0.55 });
+      const cx = way.rect.x + way.rect.w / 2;
+      const cy = way.rect.y + way.rect.h / 2;
+      for (let i = 0; i < 3; i++) {
+        const ox = cx + (i - 1) * 7 * way.dir;
+        g.poly([ox - 5 * way.dir, cy - 8, ox + 7 * way.dir, cy, ox - 5 * way.dir, cy + 8]);
+        g.fill({ color: 0xf0e2c4, alpha: 0.55 + i * 0.15 });
+      }
+    }
+    if (!sim.level.phaseGates?.length) return;
+    const lavaOpen = sim.phase === 0;
+    const gx = sim.level.phaseGates[0]!.rects[0]!.x + 28;
+    const gy = 8 * TILE;
+    g.circle(gx, gy, 22);
+    g.fill({ color: 0x2a2620, alpha: 0.92 });
+    g.stroke({ color: 0xb7a078, width: 3, alpha: 0.9 });
+    const spin = sim.timeMs * 0.002 + (lavaOpen ? 0 : Math.PI);
+    for (let i = 0; i < 6; i++) {
+      const a = spin + (i * Math.PI) / 3;
+      const lavaTooth = i % 2 === 0;
+      const live = lavaTooth ? lavaOpen : !lavaOpen;
+      g.poly([
+        gx + Math.cos(a) * 8,
+        gy + Math.sin(a) * 8,
+        gx + Math.cos(a - 0.28) * 20,
+        gy + Math.sin(a - 0.28) * 20,
+        gx + Math.cos(a + 0.28) * 20,
+        gy + Math.sin(a + 0.28) * 20,
+      ]);
+      g.fill({ color: lavaTooth ? 0xb85a28 : 0x3a7a92, alpha: live ? 0.95 : 0.35 });
+    }
+    if (sim.phaseLockMs > 0) {
+      const t = sim.phaseLockMs / PHASE_LOCK_MS;
+      g.arc(gx, gy, 26, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * t);
+      g.stroke({ color: 0xe8c56a, width: 4, alpha: 0.95 });
+    }
+    for (const gate of sim.level.phaseGates) {
+      const open = gate.side === "lava" ? lavaOpen : !lavaOpen;
+      const color = gate.side === "lava" ? 0xb85a28 : 0x3a7a92;
+      for (const r of gate.rects) {
+        const cx = r.x + r.w / 2;
+        if (open) {
+          g.roundRect(r.x - 4, r.y - 10, r.w + 8, 14, 3);
+          g.fill({ color, alpha: 0.55 });
+        } else {
+          g.roundRect(r.x, r.y, r.w, r.h, 3);
+          g.fill({ color, alpha: 0.9 });
+          g.roundRect(r.x + 2, r.y + 8, r.w - 4, r.h - 16, 2);
+          g.fill({ color: 0x1a1612, alpha: 0.35 });
+        }
+        this.paintDiamond(g, cx, r.y + (open ? 4 : r.h / 2), 7, open ? 0xfff3c0 : 0x3a2e18, 0.9);
+        this.paintLink(g, gx, gy, cx, r.y + r.h / 2, open, color, sim.timeMs);
+      }
+    }
+    for (const plate of sim.level.extraPlates ?? []) {
+      const on = sim.extraHeld[plate.id];
+      const color = plate.who === "ember" ? 0xffa45f : 0x8edfff;
+      g.roundRect(plate.rect.x, plate.rect.y - 4, plate.rect.w, plate.rect.h + 6, 5);
+      g.fill({ color: on ? color : 0x4a453c, alpha: 0.92 });
+      this.paintDiamond(g, plate.rect.x + plate.rect.w / 2, plate.rect.y + 2, 8, on ? 0xfff3c0 : color, 0.9);
+      this.paintLink(g, plate.rect.x + plate.rect.w / 2, plate.rect.y, gx, gy, on, color, sim.timeMs);
+    }
+  }
+
+  private paintHoldGates(sim: SimState, g: Graphics): void {
     for (const gate of sim.level.holdGates ?? []) {
       const held =
         (gate.who !== "frost" && standingOnPlate(sim.ember, gate.plate)) ||
         (gate.who !== "ember" && standingOnPlate(sim.frost, gate.plate));
-      g.roundRect(gate.plate.x, gate.plate.y - 5, gate.plate.w, gate.plate.h + 7, 5);
-      g.fill({ color: held ? 0xe8c56a : 0x5c564c, alpha: 0.9 });
-      if (held) continue;
+      const color = gate.who === "frost" ? 0x8edfff : 0xffa45f;
+      g.roundRect(gate.plate.x - 4, gate.plate.y - 6, gate.plate.w + 8, gate.plate.h + 10, 6);
+      g.fill({ color: 0x2c261e, alpha: 0.8 });
+      g.roundRect(gate.plate.x, gate.plate.y - 4, gate.plate.w, gate.plate.h + 6, 4);
+      g.fill({ color: held ? color : 0x5c564c, alpha: 0.95 });
+      this.paintChevron(g, gate.plate.x + gate.plate.w / 2, gate.plate.y - 2, 8, held ? 0xfff3c0 : 0xc4b08a, 0.95);
       for (const r of gate.rects) {
-        g.roundRect(r.x, r.y, r.w, r.h, 3);
-        g.fill({ color: 0x8a7048, alpha: 0.92 });
+        const cx = r.x + r.w / 2;
+        const cy = r.y + r.h / 2;
+        if (held) {
+          g.roundRect(r.x - 3, r.y, r.w + 6, 10, 3);
+          g.fill({ color, alpha: 0.45 });
+        } else {
+          g.roundRect(r.x, r.y, r.w, r.h, 3);
+          g.fill({ color: 0x8a7048, alpha: 0.94 });
+          g.roundRect(r.x + 3, r.y + 10, r.w - 6, r.h - 20, 2);
+          g.fill({ color: 0x2a2218, alpha: 0.35 });
+        }
+        this.paintChevron(g, cx, held ? r.y + 8 : cy, 8, held ? 0xfff3c0 : 0x3a2e18, 0.95);
+        this.paintLink(g, gate.plate.x + gate.plate.w, gate.plate.y, cx, cy, held, color, sim.timeMs);
       }
     }
-    if (sim.level.gear) {
-      const t = sim.gearArmedMs;
-      for (const win of sim.level.gear.windows) {
-        const open = t !== null && t >= win.openAtMs && t < win.closeAtMs;
-        if (open) continue;
-        for (const r of win.solidsWhenClosed) {
+  }
+
+  private paintGearMachine(sim: SimState, g: Graphics): void {
+    const spec = sim.level.gear;
+    if (!spec) return;
+    const t = sim.gearArmedMs;
+    const lever = sim.level.levers?.find((l) => l.kind === "gear");
+    const lx = lever ? lever.rect.x + lever.rect.w : 0;
+    const ly = lever ? lever.rect.y + lever.rect.h / 2 : 0;
+    const ages = [0.85, 0.5, 0.22];
+    for (const [i, win] of spec.windows.entries()) {
+      const r = win.solidsWhenClosed[0];
+      if (!r) continue;
+      g.ellipse(r.x - 8, r.y + r.h, 16 + i * 2, 5);
+      g.fill({ color: 0x3a2a18, alpha: ages[i] ?? 0.4 });
+    }
+    for (const win of spec.windows) {
+      const open = t !== null && t >= win.openAtMs && t < win.closeAtMs;
+      const fake = win.id.includes("early") || win.id.includes("fake");
+      const fire = win.id.includes("fire");
+      const color = fire ? 0xffa45f : fake ? 0x6a8890 : 0x8edfff;
+      for (const r of win.solidsWhenClosed) {
+        const cx = r.x + r.w / 2;
+        const top = r.y - 18;
+        const swing = open ? Math.sin(sim.timeMs * 0.012) * 0.45 : 0;
+        g.roundRect(cx - 3, top - 8, 6, 12, 2);
+        g.fill({ color: 0x6a6054, alpha: 1 });
+        g.ellipse(cx + Math.sin(swing) * 8, top + 10 + Math.abs(Math.sin(swing)) * 2, 9, 12);
+        g.fill({ color: open ? 0xe8c56a : 0x6e6758, alpha: 0.95 });
+        g.stroke({ color: 0xf0e2c4, width: 1.5, alpha: open ? 0.9 : 0.4 });
+        if (open) {
+          g.roundRect(r.x - 4, r.y, r.w + 8, 8, 3);
+          g.fill({ color, alpha: 0.5 });
+          g.roundRect(r.x - 4, r.y + r.h - 8, r.w + 8, 8, 3);
+          g.fill({ color, alpha: 0.5 });
+        } else {
           g.roundRect(r.x, r.y, r.w, r.h, 3);
-          g.fill({ color: 0x6e6758, alpha: 0.9 });
+          g.fill({ color: fake ? 0x5a5048 : 0x6e6758, alpha: 0.94 });
+          if (fake) {
+            g.rect(r.x + 2, r.y + 16, r.w - 4, 3);
+            g.fill({ color: 0x2a2218, alpha: 0.55 });
+            g.rect(r.x + 4, r.y + r.h * 0.55, r.w - 8, 2);
+            g.fill({ color: 0x8a7048, alpha: 0.4 });
+          }
         }
+        this.paintDiamond(g, cx, open ? r.y + 10 : r.y + r.h / 2, 7, open ? 0xfff3c0 : color, 0.9);
+        if (lever) this.paintLink(g, lx, ly, cx, r.y + 12, open, color, sim.timeMs);
       }
     }
   }
