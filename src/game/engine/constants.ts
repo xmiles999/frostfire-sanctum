@@ -3,9 +3,9 @@ export const PHYS_DT = 1 / 120;
 export const MAX_PHYS_STEPS = 8;
 export const GRAVITY = 2400;
 /** Chosen so hang height is ~3.2 tiles (design doc 720px/s was inconsistent with 2400 gravity). */
-export const JUMP_SPEED = 860;
-export const EMBER_SPEED = 220;
-export const FROST_SPEED = 200;
+export const JUMP_SPEED = 900;
+export const EMBER_SPEED = 380;
+export const FROST_SPEED = 350;
 export const COYOTE_MS = 80;
 export const JUMP_BUFFER_MS = 100;
 export const ACTOR_W = 28;

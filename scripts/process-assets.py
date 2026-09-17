@@ -49,6 +49,13 @@ def bbox(im: Image.Image, pad: int = 12) -> tuple[int, int, int, int]:
     return (x0, y0, x1, y1)
 
 
+def fit_height(im: Image.Image, max_h: int) -> Image.Image:
+    if im.height <= max_h:
+        return im
+    w = max(1, round(im.width * max_h / im.height))
+    return im.resize((w, max_h), Image.Resampling.LANCZOS)
+
+
 def union_box(boxes: list[tuple[int, int, int, int]]) -> tuple[int, int, int, int]:
     return (
         min(b[0] for b in boxes),
@@ -69,15 +76,16 @@ def export_seq(src_dir: Path, dest: Path, indices: list[int]) -> None:
         boxes.append(bbox(im))
     box = union_box(boxes)
     for n, im in enumerate(keyed):
-        crop = im.crop(box)
-        crop.save(dest / f"{n:02d}.png")
+        crop = fit_height(im.crop(box), 320)
+        crop.save(dest / f"{n:02d}.png", "PNG", optimize=True, compress_level=9)
     print(f"  {dest.relative_to(ROOT)}  {len(keyed)} frames  crop={box}")
 
 
 def export_still(src: Path, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
-    im = key_green(Image.open(src))
-    im.crop(bbox(im, pad=16)).save(dest)
+    keyed = key_green(Image.open(src))
+    im = fit_height(keyed.crop(bbox(keyed, pad=16)), 320)
+    im.save(dest, "PNG", optimize=True, compress_level=9)
     print(f"  {dest.relative_to(ROOT)}")
 
 

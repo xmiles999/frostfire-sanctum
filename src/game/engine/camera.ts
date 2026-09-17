@@ -24,7 +24,7 @@ export function updateCamera(cam: Camera, sim: SimState, dt: number): void {
   const cy = (minY + maxY) / 2;
   const targetX = Math.max(0, Math.min(worldW - cam.w, cx + pad / 4 - cam.w / 2));
   const targetY = Math.max(0, Math.min(worldH - cam.h, cy - cam.h / 2));
-  const k = 1 - Math.exp(-8 * dt);
+  const k = 1 - Math.exp(-10 * dt);
   cam.x += (targetX - cam.x) * k;
   cam.y += (targetY - cam.y) * k;
 }

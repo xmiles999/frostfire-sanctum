@@ -58,10 +58,10 @@ export const LEVEL_01: LevelDocument = {
     { id: "water_exit", type: "water_shallow", rect: R(58, 14, 8, 1) },
   ],
   plates: {
-    ember: R(51.2, 7.55, 2.2, 0.5),
-    frost: R(51.2, 14.55, 2.2, 0.5),
+    ember: R(50.6, 7.45, 3.2, 0.6),
+    frost: R(50.6, 14.45, 3.2, 0.6),
   },
-  altar: R(49, 13, 2, 2),
+  altar: R(48, 12.4, 2.6, 2.6),
   wispNest: { ...L01.wispNest },
   chargeBudget: 1,
   score: { starTimeMs: STAR_TIME_MS, starDeaths: STAR_DEATHS_2 },
