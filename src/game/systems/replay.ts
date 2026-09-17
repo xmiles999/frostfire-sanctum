@@ -56,7 +56,7 @@ function shouldJump(sim: SimState, actor: ActorState, targetX: number): boolean 
     const lift = footY - s.y;
     const ahead = dir > 0 ? s.x : s.x + s.w;
     const dist = (ahead - cx) * dir;
-    return dist > 8 && dist < 1.7 * TILE && lift > 28 && lift < 130;
+    return dist > 8 && dist < 1.7 * TILE && lift > 28 && lift < 165;
   });
   if (ledgeUp) return true;
 
@@ -77,7 +77,7 @@ function goX(intent: Intent, sim: SimState, actor: ActorState, targetX: number):
   goWalk(intent, actor, targetX);
   const cx = cxOf(actor);
   const toward = (targetX > cx && intent.right) || (targetX < cx && intent.left);
-  const holdArc = !actor.onGround && actor.vy < -40 && toward;
+  const holdArc = !actor.onGround && toward;
   if (shouldJump(sim, actor, targetX) || holdArc) {
     intent.jump = true;
     intent.up = true;
@@ -120,43 +120,46 @@ function holdGateHeld(sim: SimState, index: number): boolean {
   return false;
 }
 
+function goFrost01(intent: Intent, sim: SimState, targetX: number): void {
+  goX(intent, sim, sim.frost, targetX);
+}
+
 function official01(sim: SimState): PairIntent {
   const ember = cloneIntent();
   const frost = cloneIntent();
   const wispOnEmber = sim.wisp.phase === "chase" && sim.wisp.target === "ember";
   const frostCx = cxOf(sim.frost);
   const frostPastGate = frostCx > L01.frostPastGateX;
-  const frostHold = holdGateHeld(sim, 1);
 
   if (sim.doorOpen) {
     goX(ember, sim, sim.ember, L01.exitEmberX);
-    goX(frost, sim, sim.frost, L01.exitFrostX);
+    goFrost01(frost, sim, L01.exitFrostX);
     return { ember, frost };
   }
 
-  const emberPastGate2 = cxOf(sim.ember) > 51 * TILE;
-  if (emberPastGate2 && frostPastGate) {
+  if (sim.plateEmber && sim.plateFrost) return { ember, frost };
+
+  if (frostPastGate && cxOf(sim.ember) > 16.4 * TILE) {
     goX(ember, sim, sim.ember, L01.plateEmberX);
-    goX(frost, sim, sim.frost, L01.plateFrostX);
+    goFrost01(frost, sim, L01.plateFrostX);
     return { ember, frost };
   }
 
   if (frostPastGate) {
-    if (frostHold) goX(ember, sim, sim.ember, L01.plateEmberX);
-    else goX(ember, sim, sim.ember, L01.emberWaitGateX);
-    steamAdvance(frost, sim, sim.frost, L01.steamWaitX, L01.holdFrostX);
+    goX(ember, sim, sim.ember, L01.plateEmberX);
+    steamAdvance(frost, sim, sim.frost, L01.steamWaitX, L01.plateFrostX);
     return { ember, frost };
   }
 
-  if (!wispOnEmber && frostCx < 36 * TILE) {
+  if (!wispOnEmber) {
     goX(ember, sim, sim.ember, L01.lureX);
-    goX(frost, sim, sim.frost, 8 * TILE);
+    goFrost01(frost, sim, L01.frostWaitX);
     return { ember, frost };
   }
 
   goX(ember, sim, sim.ember, L01.holdEmberX);
-  if (holdGateHeld(sim, 0)) goX(frost, sim, sim.frost, L01.steamWaitX);
-  else goX(frost, sim, sim.frost, L01.frostWaitX);
+  if (holdGateHeld(sim, 0)) steamAdvance(frost, sim, sim.frost, L01.steamWaitX, L01.plateFrostX);
+  else goFrost01(frost, sim, L01.frostWaitX);
   return { ember, frost };
 }
 
@@ -165,22 +168,22 @@ function official02(sim: SimState): PairIntent {
   const frost = cloneIntent();
   const crate = sim.crates[0];
   const crateX = crate ? crate.x + crate.w / 2 : 0;
-  const wellReady = crateX >= 36.5 * TILE;
+  const wellReady = crateX >= 9.0 * TILE;
   const seated =
     crate && sim.level.tide
-      ? crate.x + crate.w / 2 > 41 * TILE && crate.x + crate.w / 2 < 45 * TILE && sim.tideLevel === 2
+      ? crateX > 10.2 * TILE && crateX < 13.6 * TILE && sim.tideLevel === 2
       : false;
-  const frostPastHold = cxOf(sim.frost) > 50.2 * TILE;
+  const frostPastHold = cxOf(sim.frost) > 17.0 * TILE;
 
   if (sim.doorOpen && sim.tideLevel === 1) {
     if (!frostPastHold && !holdGateHeld(sim, 0)) {
       goX(ember, sim, sim.ember, L02.holdEmberX);
-      goX(frost, sim, sim.frost, 46.6 * TILE);
+      goWalk(frost, sim.frost, 15.2 * TILE);
       return { ember, frost };
     }
     if (!frostPastHold) {
       goX(ember, sim, sim.ember, L02.holdEmberX);
-      goX(frost, sim, sim.frost, L02.plateFrostX);
+      goWalk(frost, sim.frost, L02.plateFrostX);
       return { ember, frost };
     }
     goX(ember, sim, sim.ember, L02.exitEmberX);
@@ -189,20 +192,20 @@ function official02(sim: SimState): PairIntent {
   }
 
   if (sim.tideLevel === 2) {
-    if (seated) {
+    if (sim.doorOpen) {
       const onLever = Math.abs(cxOf(sim.ember) - L02.leverX) < 42;
       goX(ember, sim, sim.ember, onLever ? L02.waitLeverX : L02.leverX);
     } else {
       goX(ember, sim, sim.ember, L02.waitLeverX);
     }
-    goX(frost, sim, sim.frost, seated ? 44 * TILE : L02.wellX);
+    goWalk(frost, sim.frost, seated || sim.doorOpen ? 12.2 * TILE : L02.wellX);
     return { ember, frost };
   }
 
   if (!wellReady) goX(ember, sim, sim.ember, L02.waitLeverX);
   else goX(ember, sim, sim.ember, L02.leverX);
-  if (!wellReady) goX(frost, sim, sim.frost, crate ? crate.x + crate.w + 36 : L02.wellEdgeX);
-  else goX(frost, sim, sim.frost, L02.wellEdgeX - 8);
+  if (!wellReady) goWalk(frost, sim.frost, crate ? crate.x + crate.w + 28 : L02.wellEdgeX);
+  else goWalk(frost, sim.frost, L02.wellEdgeX - 6);
   return { ember, frost };
 }
 
@@ -210,9 +213,9 @@ function official03(sim: SimState): PairIntent {
   const ember = cloneIntent();
   const frost = cloneIntent();
   const mid = sim.bridges.find((b) => b.id === "wood_mid");
-  const frostPast = cxOf(sim.frost) > 24 * TILE;
-  const frostPastHold = cxOf(sim.frost) > 49.2 * TILE;
-  const pastDoor = sim.doorOpen || sim.ember.x > 56.2 * TILE;
+  const frostPast = cxOf(sim.frost) > 14.2 * TILE;
+  const frostPastHold = cxOf(sim.frost) > 16.4 * TILE;
+  const pastDoor = sim.doorOpen || sim.ember.x > 20.2 * TILE;
 
   if (pastDoor) {
     goX(ember, sim, sim.ember, L03.exitEmberX);
@@ -220,10 +223,12 @@ function official03(sim: SimState): PairIntent {
     return { ember, frost };
   }
 
+  if (sim.plateEmber && sim.plateFrost) return { ember, frost };
+
   if (mid?.collapsed) {
     if (!frostPastHold && !holdGateHeld(sim, 0)) {
       goX(ember, sim, sim.ember, L03.holdEmberX);
-      goX(frost, sim, sim.frost, 35 * TILE);
+      goX(frost, sim, sim.frost, 14.6 * TILE);
       return { ember, frost };
     }
     if (!frostPastHold) {
@@ -237,12 +242,12 @@ function official03(sim: SimState): PairIntent {
   }
 
   if (!frostPast) {
-    goX(frost, sim, sim.frost, 24.5 * TILE);
-    goX(ember, sim, sim.ember, 7 * TILE);
+    goX(frost, sim, sim.frost, 14.6 * TILE);
+    goX(ember, sim, sim.ember, 6.4 * TILE);
     return { ember, frost };
   }
 
-  goX(frost, sim, sim.frost, 24.5 * TILE);
+  goX(frost, sim, sim.frost, 14.6 * TILE);
   goX(ember, sim, sim.ember, L03.igniteX);
   if (Math.abs(cxOf(sim.ember) - L03.igniteX) < 50) pulseInteract(ember, sim.ember);
   return { ember, frost };
@@ -252,8 +257,8 @@ function official04(sim: SimState): PairIntent {
   const ember = cloneIntent();
   const frost = cloneIntent();
   const wispOnEmber = sim.wisp.phase === "chase" && sim.wisp.target === "ember";
-  const pastDoor = sim.doorOpen || sim.ember.x > 56.2 * TILE;
-  const frostPastHold = cxOf(sim.frost) > 46 * TILE;
+  const pastDoor = sim.doorOpen || sim.ember.x > 20.2 * TILE;
+  const frostPastHold = cxOf(sim.frost) > 16.2 * TILE;
 
   if (pastDoor) {
     goX(ember, sim, sim.ember, L04.exitEmberX);
@@ -263,37 +268,42 @@ function official04(sim: SimState): PairIntent {
 
   if (sim.plateEmber && sim.plateFrost) return { ember, frost };
 
-  if (sim.ember.x > 34 * TILE && sim.frost.x > 34 * TILE && sim.phase === 1) {
+  if (cxOf(sim.ember) > 12.4 * TILE && cxOf(sim.frost) > 12.4 * TILE) {
     if (!frostPastHold && !holdGateHeld(sim, 0)) {
       goX(ember, sim, sim.ember, L04.holdEmberX);
-      goX(frost, sim, sim.frost, 41 * TILE);
+      steamAdvance(frost, sim, sim.frost, 14.4 * TILE, 14.8 * TILE);
       return { ember, frost };
     }
     if (!frostPastHold) {
       goX(ember, sim, sim.ember, L04.holdEmberX);
-      steamAdvance(frost, sim, sim.frost, 41.6 * TILE, L04.plateFrostX);
+      steamAdvance(frost, sim, sim.frost, 14.4 * TILE, L04.plateFrostX);
       return { ember, frost };
     }
     goX(ember, sim, sim.ember, L04.plateEmberX);
-    steamAdvance(frost, sim, sim.frost, 41.6 * TILE, L04.plateFrostX);
+    steamAdvance(frost, sim, sim.frost, 14.4 * TILE, L04.plateFrostX);
     return { ember, frost };
   }
 
-  if (sim.frost.x < 20 * TILE) {
-    goX(ember, sim, sim.ember, 16.4 * TILE);
-    if (!wispOnEmber) goX(frost, sim, sim.frost, 8 * TILE);
+  if (sim.frost.x < 8.2 * TILE) {
+    goX(ember, sim, sim.ember, 9.6 * TILE);
+    if (!wispOnEmber) goX(frost, sim, sim.frost, 2.4 * TILE);
     else goX(frost, sim, sim.frost, L04.innerFrostX);
     return { ember, frost };
   }
 
-  if (sim.phase === 1 && sim.frost.x < 34 * TILE) {
+  if (sim.phase === 1 && sim.frost.x < 13.2 * TILE) {
     goX(frost, sim, sim.frost, L04.innerFrostX);
-    goX(ember, sim, sim.ember, 29 * TILE);
+    goX(ember, sim, sim.ember, 11.2 * TILE);
     return { ember, frost };
   }
 
-  if (sim.phase === 0 || sim.phaseLockMs > 0) {
+  if (sim.phaseLockMs > 0 || sim.phase === 0) {
     goX(ember, sim, sim.ember, L04.innerEmberX);
+    if (sim.phase === 0 && sim.phaseLockMs === 0 && cxOf(sim.ember) > 12.8 * TILE) {
+      goX(ember, sim, sim.ember, L04.holdEmberX);
+      steamAdvance(frost, sim, sim.frost, 14.4 * TILE, L04.plateFrostX);
+      return { ember, frost };
+    }
     goX(frost, sim, sim.frost, L04.innerFrostX);
     return { ember, frost };
   }
@@ -307,8 +317,8 @@ function official05(sim: SimState): PairIntent {
   const ember = cloneIntent();
   const frost = cloneIntent();
   const armed = sim.gearArmedMs;
-  const pastDoor = sim.doorOpen || sim.ember.x > 56.2 * TILE;
-  const frostPastHold = cxOf(sim.frost) > 45.4 * TILE;
+  const pastDoor = sim.doorOpen || sim.ember.x > 20.2 * TILE;
+  const frostPastHold = cxOf(sim.frost) > 16.2 * TILE;
 
   if (pastDoor) {
     goX(ember, sim, sim.ember, L05.exitEmberX);
@@ -316,28 +326,36 @@ function official05(sim: SimState): PairIntent {
     return { ember, frost };
   }
 
+  if (sim.plateEmber && sim.plateFrost) return { ember, frost };
+
   if (armed === null) {
     goX(ember, sim, sim.ember, L05.leverX);
     if (Math.abs(cxOf(sim.ember) - L05.leverX) < 36) pulseInteract(ember, sim.ember);
-    goX(frost, sim, sim.frost, 8 * TILE);
+    goX(frost, sim, sim.frost, 3.2 * TILE);
     return { ember, frost };
   }
 
-  if (armed < 2200) {
-    goX(ember, sim, sim.ember, 28 * TILE);
-    goX(frost, sim, sim.frost, 8 * TILE);
+  if (armed < 1400) {
+    goX(ember, sim, sim.ember, L05.holdEmberX);
+    goX(frost, sim, sim.frost, 3.2 * TILE);
+    return { ember, frost };
+  }
+
+  if (armed < 3000) {
+    goX(ember, sim, sim.ember, L05.holdEmberX);
+    goX(frost, sim, sim.frost, L05.frostChamberX);
     return { ember, frost };
   }
 
   if (armed < 3600) {
     goX(ember, sim, sim.ember, L05.holdEmberX);
-    goX(frost, sim, sim.frost, 26 * TILE);
+    goX(frost, sim, sim.frost, L05.frostChamberX);
     return { ember, frost };
   }
 
   if (!frostPastHold && !holdGateHeld(sim, 0)) {
     goX(ember, sim, sim.ember, L05.holdEmberX);
-    goX(frost, sim, sim.frost, 42 * TILE);
+    goX(frost, sim, sim.frost, 14.4 * TILE);
     return { ember, frost };
   }
   if (!frostPastHold) {
@@ -361,6 +379,6 @@ export function officialPolicy(sim: SimState): PairIntent {
 export function frostRushesWispPolicy(sim: SimState): PairIntent {
   const ember = cloneIntent();
   const frost = cloneIntent();
-  goX(frost, sim, sim.frost, 32 * TILE);
+  goX(frost, sim, sim.frost, 14 * TILE);
   return { ember, frost };
 }

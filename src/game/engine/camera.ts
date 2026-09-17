@@ -6,27 +6,25 @@ export interface Camera {
   y: number;
   w: number;
   h: number;
+  scale: number;
+  ox: number;
+  oy: number;
 }
 
 export function makeCamera(w: number, h: number): Camera {
-  return { x: 0, y: 0, w, h };
+  return { x: 0, y: 0, w, h, scale: 1, ox: 0, oy: 0 };
 }
 
-export function updateCamera(cam: Camera, sim: SimState, dt: number): void {
+/** Fit the whole room on screen. Forest Ice Fire–style: no scrolling. */
+export function updateCamera(cam: Camera, sim: SimState, _dt: number): void {
   const worldW = sim.level.size.w * TILE;
   const worldH = sim.level.size.h * TILE;
-  const minX = Math.min(sim.ember.x, sim.frost.x);
-  const maxX = Math.max(sim.ember.x + sim.ember.w, sim.frost.x + sim.frost.w);
-  const minY = Math.min(sim.ember.y, sim.frost.y);
-  const maxY = Math.max(sim.ember.y + sim.ember.h, sim.frost.y + sim.frost.h);
-  const pad = 4 * TILE;
-  const cx = (minX + maxX) / 2;
-  const cy = (minY + maxY) / 2;
-  const targetX = Math.max(0, Math.min(worldW - cam.w, cx + pad / 4 - cam.w / 2));
-  const targetY = Math.max(0, Math.min(worldH - cam.h, cy - cam.h / 2));
-  const k = 1 - Math.exp(-10 * dt);
-  cam.x += (targetX - cam.x) * k;
-  cam.y += (targetY - cam.y) * k;
+  const scale = Math.min(cam.w / Math.max(1, worldW), cam.h / Math.max(1, worldH));
+  cam.scale = scale;
+  cam.ox = (cam.w - worldW * scale) / 2;
+  cam.oy = (cam.h - worldH * scale) / 2;
+  cam.x = 0;
+  cam.y = 0;
 }
 
 export function separated(sim: SimState): boolean {

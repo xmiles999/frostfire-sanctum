@@ -45,4 +45,4 @@ export const BRIDGE_STAND_IGNITE_MS = 2500;
 export const BRIDGE_BURN_MS = 8000;
 export const GEAR_DELAY_MS = 1800;
 export const GEAR_WINDOW_MS = 1200;
-export const IGNITE_RANGE = 5.5 * TILE;
+export const IGNITE_RANGE = 8 * TILE;

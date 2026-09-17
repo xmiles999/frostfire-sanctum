@@ -142,11 +142,10 @@ function crateOnPlate(crate: SimState["crates"][number], plate: Rect): boolean {
   const footX = crate.x + crate.w / 2;
   const footY = crate.y + crate.h;
   return (
-    crate.onGround &&
     footX >= plate.x &&
     footX <= plate.x + plate.w &&
     footY >= plate.y - 12 &&
-    footY <= plate.y + plate.h + 16
+    footY <= plate.y + plate.h + 28
   );
 }
 

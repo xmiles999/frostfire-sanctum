@@ -332,9 +332,10 @@ export class GameView {
     });
     this.props.addChild(this.plateEmber, this.plateFrost, this.altar);
 
-    for (const x of [10.5, 25, 38, 49, 62]) {
-      const col = this.tile(wall, { x: x * TILE, y: 9 * TILE, w: 22, h: 6 * TILE });
-      col.alpha = 0.42;
+    const roomW = sim.level.size.w;
+    for (const t of [0.22, 0.44, 0.66, 0.82]) {
+      const col = this.tile(wall, { x: t * roomW * TILE, y: 9 * TILE, w: 18, h: 6 * TILE });
+      col.alpha = 0.38;
       this.props.addChild(col);
     }
   }
@@ -351,13 +352,14 @@ export class GameView {
     this.far.height = this.cam.h;
     this.far.x = 0;
     this.far.y = 0;
-    this.mid.width = this.cam.w * 1.28;
-    this.mid.height = this.cam.h * 0.94;
-    this.mid.x = -this.cam.x * 0.14;
-    this.mid.y = this.cam.h * 0.08 - this.cam.y * 0.05;
+    this.mid.width = this.cam.w;
+    this.mid.height = this.cam.h;
+    this.mid.x = 0;
+    this.mid.y = 0;
 
-    this.world.x = -this.cam.x;
-    this.world.y = -this.cam.y;
+    this.world.scale.set(this.cam.scale);
+    this.world.x = this.cam.ox;
+    this.world.y = this.cam.oy;
 
     const showDual = sim.level.puzzle !== "tide";
     this.plateEmber.visible = showDual;
@@ -691,12 +693,7 @@ export class GameView {
     const plate = sim.level.tide?.wellPlate;
     const crate = sim.crates[0];
     if (!plate || !crate) return false;
-    return (
-      crate.onGround &&
-      crate.x + crate.w / 2 >= plate.x &&
-      crate.x + crate.w / 2 <= plate.x + plate.w &&
-      sim.tideLevel === 2
-    );
+    return crate.x + crate.w / 2 >= plate.x && crate.x + crate.w / 2 <= plate.x + plate.w && sim.tideLevel === 2;
   }
 
   private paintWell(sim: SimState, g: Graphics): void {
@@ -707,7 +704,7 @@ export class GameView {
     const w = plate.w + 44;
     const lipY = plate.y - 18;
     const pulse = 0.55 + Math.sin(sim.timeMs * 0.008) * 0.25;
-    g.roundRect(22 * TILE, plate.y + 10, plate.x - 22 * TILE, 7, 3);
+    g.roundRect(Math.max(TILE, plate.x - 90), plate.y + 10, 70, 7, 3);
     g.fill({ color: 0x2a241c, alpha: 0.42 });
     g.roundRect(x - 8, lipY + 14, w + 16, 28, 6);
     g.fill({ color: 0x2a2620, alpha: 0.55 });
