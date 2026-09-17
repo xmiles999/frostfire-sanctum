@@ -14,6 +14,7 @@ export interface HudModel {
   deaths: number;
   steamPhase: string;
   doorOpen: boolean;
+  doorPhase: SimState["doorPhase"];
   latchMs: number;
   plateEmber: boolean;
   plateFrost: boolean;
@@ -92,6 +93,7 @@ export class GameRuntime {
       deaths: this.sim.deaths,
       steamPhase: this.sim.steamPhase,
       doorOpen: this.sim.doorOpen,
+      doorPhase: this.sim.doorPhase,
       latchMs: this.sim.latchMs,
       plateEmber: this.sim.plateEmber,
       plateFrost: this.sim.plateFrost,

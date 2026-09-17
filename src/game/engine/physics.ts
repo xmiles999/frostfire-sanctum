@@ -1,6 +1,14 @@
 import type { Rect } from "./aabb";
 import { rectsOverlap } from "./aabb";
-import { COYOTE_MS, FALL_SPEED_MAX, GRAVITY, JUMP_BUFFER_MS, JUMP_SPEED } from "./constants";
+import {
+  COYOTE_MS,
+  FALL_SPEED_MAX,
+  GRAVITY,
+  JUMP_BUFFER_MS,
+  JUMP_RELEASE_MULTIPLIER,
+  JUMP_SPEED,
+  LAND_RECOVERY_MS,
+} from "./constants";
 import type { ActorState } from "../sim/types";
 
 export function actorRect(a: Pick<ActorState, "x" | "y" | "w" | "h">): Rect {
@@ -39,14 +47,20 @@ export function integrateActor(
   if (a.downed) {
     a.vx = 0;
     a.vy = 0;
+    a.jumpWasHeld = wantJump;
     return;
   }
+
+  const wasGrounded = a.onGround;
+  const jumpPressed = wantJump && !a.jumpWasHeld;
+  const jumpReleased = !wantJump && a.jumpWasHeld;
+  a.jumpWasHeld = wantJump;
 
   const dir = (wantRight ? 1 : 0) - (wantLeft ? 1 : 0);
   a.vx = dir * speed;
   if (dir !== 0) a.facing = dir as 1 | -1;
 
-  if (wantJump) a.jumpBufferMs = JUMP_BUFFER_MS;
+  if (jumpPressed) a.jumpBufferMs = JUMP_BUFFER_MS;
   else a.jumpBufferMs = Math.max(0, a.jumpBufferMs - dt * 1000);
 
   if (a.onGround) a.coyoteMs = COYOTE_MS;
@@ -62,6 +76,10 @@ export function integrateActor(
     a.jumpBufferMs = 0;
   }
 
+  if (jumpReleased && a.vy < 0) {
+    a.vy *= JUMP_RELEASE_MULTIPLIER;
+  }
+
   resolveAxis(a, solids, a.vx * dt, 0);
   const yHit = resolveAxis(a, solids, 0, a.vy * dt);
   if (yHit && a.vy > 0) {
@@ -73,4 +91,7 @@ export function integrateActor(
   } else if (!yHit) {
     a.onGround = false;
   }
+
+  if (!wasGrounded && a.onGround) a.landMs = LAND_RECOVERY_MS;
+  else a.landMs = Math.max(0, a.landMs - dt * 1000);
 }

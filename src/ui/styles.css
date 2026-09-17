@@ -83,6 +83,11 @@ button, a { font: inherit; }
 .tag { background: rgba(0,0,0,0.45); padding: 6px 10px; border-left: 3px solid var(--gold); }
 .tag.ember { border-color: var(--ember); }
 .tag.frost { border-color: var(--frost); }
+.tag.door-live {
+  color: #ffe0a2;
+  border-color: #f0c56a;
+  background: rgba(42, 28, 10, 0.68);
+}
 .warn { color: #ffcc88; }
 
 .overlay {
@@ -97,3 +102,9 @@ button, a { font: inherit; }
   gap: 18px;
 }
 .overlay h2 { margin: 0; letter-spacing: 0.2em; font-size: 2rem; }
+
+@media (max-width: 840px) {
+  .hud { padding: 10px 12px; font-size: 0.78rem; }
+  .hud-top, .hud-bot { gap: 8px; flex-wrap: wrap; }
+  .tag { padding: 5px 7px; }
+}

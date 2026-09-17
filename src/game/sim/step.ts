@@ -1,6 +1,7 @@
 import { rectCenter, rectsOverlap, dist } from "../engine/aabb";
 import {
   DOOR_LATCH_MS,
+  DOOR_MOTION_MS,
   EMBER_SPEED,
   EXIT_HOLD_MS,
   FROST_SPEED,
@@ -120,6 +121,57 @@ function inLava(sim: SimState, actor: ActorState): boolean {
   );
 }
 
+function actorStandingOnPlate(actor: ActorState, plate: SimState["level"]["plates"]["ember"]): boolean {
+  if (actor.downed || !actor.onGround) return false;
+  const footX = actor.x + actor.w / 2;
+  const footY = actor.y + actor.h;
+  const horizontalInset = Math.min(10, plate.w * 0.12);
+  return (
+    footX >= plate.x + horizontalInset &&
+    footX <= plate.x + plate.w - horizontalInset &&
+    footY >= plate.y - 10 &&
+    footY <= plate.y + plate.h + 10
+  );
+}
+
+function latchDoor(sim: SimState): void {
+  sim.doorOpen = true;
+  sim.doorPhase = "opening";
+  sim.doorMotionMs = DOOR_MOTION_MS;
+  sim.latchMs = DOOR_LATCH_MS;
+}
+
+function stepDoor(sim: SimState, dtMs: number): void {
+  if (!sim.doorOpen) return;
+
+  if (sim.doorPhase === "opening") {
+    sim.doorMotionMs = Math.max(0, sim.doorMotionMs - dtMs);
+    if (sim.doorMotionMs === 0) sim.doorPhase = "open";
+  }
+
+  sim.latchMs = Math.max(0, sim.latchMs - dtMs);
+  if (sim.latchMs > 0) return;
+
+  const occupyingDoor = sim.level.gatedSolids.some(
+    (s) => rectsOverlap(actorRect(sim.ember), s) || rectsOverlap(actorRect(sim.frost), s),
+  );
+  if (occupyingDoor) {
+    sim.doorPhase = "open";
+    sim.doorMotionMs = 0;
+    return;
+  }
+
+  if (sim.doorPhase !== "closing") {
+    sim.doorPhase = "closing";
+    sim.doorMotionMs = DOOR_MOTION_MS;
+  }
+  sim.doorMotionMs = Math.max(0, sim.doorMotionMs - dtMs);
+  if (sim.doorMotionMs === 0) {
+    sim.doorOpen = false;
+    sim.doorPhase = "closed";
+  }
+}
+
 function stepActor(
   sim: SimState,
   actor: ActorState,
@@ -150,6 +202,7 @@ function stepActor(
   actor.animTime += dt;
   if (actor.downed) actor.anim = "downed";
   else if (!actor.onGround) actor.anim = actor.vy < 0 ? "jump" : "fall";
+  else if (actor.landMs > 0) actor.anim = "land";
   else if (Math.abs(actor.vx) > 8) actor.anim = "walk";
   else if (intent.interact) actor.anim = "interact";
   else actor.anim = "idle";
@@ -185,27 +238,17 @@ export function stepSim(sim: SimState, intents: PairIntent, dt = PHYS_DT): void 
   stepWisp(sim, dt);
   applyHazards(sim);
 
-  sim.plateEmber = !sim.ember.downed && rectsOverlap(actorRect(sim.ember), sim.level.plates.ember);
-  sim.plateFrost = !sim.frost.downed && rectsOverlap(actorRect(sim.frost), sim.level.plates.frost);
+  sim.plateEmber = actorStandingOnPlate(sim.ember, sim.level.plates.ember);
+  sim.plateFrost = actorStandingOnPlate(sim.frost, sim.level.plates.frost);
   if (sim.plateEmber && sim.plateFrost) {
     sim.bothHeldMs += dt * 1000;
-    if (sim.bothHeldMs >= PLATE_HOLD_MS) {
-      sim.doorOpen = true;
-      sim.latchMs = DOOR_LATCH_MS;
+    if (sim.bothHeldMs >= PLATE_HOLD_MS && !sim.doorOpen) {
+      latchDoor(sim);
     }
   } else {
     sim.bothHeldMs = 0;
   }
-  if (sim.doorOpen) {
-    sim.latchMs -= dt * 1000;
-    const occupyingDoor = sim.level.gatedSolids.some(
-      (s) => rectsOverlap(actorRect(sim.ember), s) || rectsOverlap(actorRect(sim.frost), s),
-    );
-    if (sim.latchMs <= 0 && !occupyingDoor) {
-      sim.doorOpen = false;
-      sim.latchMs = 0;
-    }
-  }
+  stepDoor(sim, dt * 1000);
 
   const emberExit = rectsOverlap(actorRect(sim.ember), sim.level.exits.ember) && !sim.ember.downed;
   const frostExit = rectsOverlap(actorRect(sim.frost), sim.level.exits.frost) && !sim.frost.downed;

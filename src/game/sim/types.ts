@@ -24,6 +24,8 @@ export type SteamPhase = "safe" | "telegraph" | "lethal";
 
 export type WispPhase = "idle" | "acquire" | "chase" | "lost";
 
+export type DoorPhase = "closed" | "opening" | "open" | "closing";
+
 export interface Intent {
   left: boolean;
   right: boolean;
@@ -54,6 +56,8 @@ export interface ActorState {
   onGround: boolean;
   coyoteMs: number;
   jumpBufferMs: number;
+  jumpWasHeld: boolean;
+  landMs: number;
   downed: boolean;
   invulnMs: number;
   anim: ActorAnim;
@@ -109,6 +113,8 @@ export interface SimState {
   plateFrost: boolean;
   bothHeldMs: number;
   doorOpen: boolean;
+  doorPhase: DoorPhase;
+  doorMotionMs: number;
   latchMs: number;
   bothInExitMs: number;
   chargeLeft: number;

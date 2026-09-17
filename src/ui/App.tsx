@@ -91,6 +91,15 @@ function Play({ onExit }: { onExit: () => void }) {
         setBoot("error");
       });
     const onKey = (e: KeyboardEvent) => {
+      if (
+        e.code === "ArrowLeft" ||
+        e.code === "ArrowRight" ||
+        e.code === "ArrowUp" ||
+        e.code === "ArrowDown" ||
+        e.code === "Space"
+      ) {
+        e.preventDefault();
+      }
       if (e.code === "Escape") {
         e.preventDefault();
         if (rt.sim.status === "paused") {
@@ -111,12 +120,20 @@ function Play({ onExit }: { onExit: () => void }) {
       rt.input.down(e.code);
     };
     const onUp = (e: KeyboardEvent) => rt.input.up(e.code);
+    const clearInput = () => rt.input.clear();
+    const onVisibility = () => {
+      if (document.hidden) clearInput();
+    };
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onUp);
+    window.addEventListener("blur", clearInput);
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       ac.abort();
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onUp);
+      window.removeEventListener("blur", clearInput);
+      document.removeEventListener("visibilitychange", onVisibility);
       rt.detach();
     };
   }, []);
@@ -145,6 +162,9 @@ function Play({ onExit }: { onExit: () => void }) {
           <div className="tag">{hud?.title ?? "裂隙初醒"}</div>
           <div className="tag">{formatTime(hud?.timeMs ?? 0)} · 死亡 {hud?.deaths ?? 0}</div>
           <div className="tag">蒸汽 {steamLabel(hud?.steamPhase)}</div>
+          <div className={`tag ${hud?.doorOpen ? "door-live" : ""}`}>
+            闩锁 {doorLabel(hud)}
+          </div>
         </div>
         <div className="hud-bot">
           <div className={`tag ember`}>烬 {hud?.plateEmber ? "压板" : "行动"}</div>
@@ -201,5 +221,12 @@ function formatTime(ms: number): string {
 function steamLabel(phase?: string): string {
   if (phase === "telegraph") return "预示";
   if (phase === "lethal") return "喷发";
-  return "间隙";
+  return "安全窗";
+}
+
+function doorLabel(hud: HudModel | null): string {
+  if (!hud?.doorOpen) return "待命";
+  if (hud.doorPhase === "opening") return "开启";
+  if (hud.doorPhase === "closing") return "闭合";
+  return `${Math.max(0, hud.latchMs / 1000).toFixed(1)}s`;
 }

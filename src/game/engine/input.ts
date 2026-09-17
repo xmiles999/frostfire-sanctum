@@ -44,6 +44,10 @@ export class InputMap {
     this.keys.delete(code);
   }
 
+  clear(): void {
+    this.keys.clear();
+  }
+
   private held(code: string): boolean {
     return this.keys.has(code);
   }
