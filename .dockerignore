@@ -1,0 +1,13 @@
+node_modules
+.scratch
+.logs
+dist
+.git
+.vite
+coverage
+test-results
+playwright-report
+*.tsbuildinfo
+.env
+.env.*
+*.local

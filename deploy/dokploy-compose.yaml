@@ -1,0 +1,24 @@
+# Dokploy Compose 模板。面板里 Compose 文件选本路径时，工作目录是 deploy/，
+# 因此 build context 指向上一级仓库根。
+services:
+  frostfire-sanctum:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    expose:
+      - "3000"
+    networks:
+      - dokploy-network
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+networks:
+  dokploy-network:
+    external: true

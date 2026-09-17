@@ -26,7 +26,7 @@ npm test              # 逻辑层测试（不启动页面）
 
 烬：`WASD` + `J`。朔：方向键 + `;`。`Esc` 暂停，`R` 在暂停/结算时重开。
 
-Dokploy 用法见 [docs/部署运维.md](docs/部署运维.md)。
+Dokploy：Git 应用 + 仓库根 `Dockerfile`，容器端口 **3000**，健康检查 `/healthz`，不要把 3000 映射到公网。步骤见 [docs/部署运维.md](docs/部署运维.md)。
 
 ## 许可
 
