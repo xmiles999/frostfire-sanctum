@@ -33,10 +33,12 @@ export class GameRuntime {
   private raf = 0;
   demo = false;
   onHud?: (hud: HudModel) => void;
+  private recordedClear = false;
 
   restart(): void {
     this.sim = createSim(LEVEL_01);
     this.acc = 0;
+    this.recordedClear = false;
   }
 
   pause(): void {
@@ -80,7 +82,8 @@ export class GameRuntime {
         steps += 1;
       }
     }
-    if (this.sim.status === "cleared") {
+    if (this.sim.status === "cleared" && !this.recordedClear) {
+      this.recordedClear = true;
       recordClear(this.sim.level.id, starsFor(this.sim), this.sim.timeMs, this.sim.deaths);
     }
     this.view?.render(this.sim, dt);

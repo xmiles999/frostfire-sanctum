@@ -64,6 +64,8 @@ function Play({ onExit }: { onExit: () => void }) {
   const rtRef = useRef<GameRuntime | null>(null);
   const [hud, setHud] = useState<HudModel | null>(null);
   const [paused, setPaused] = useState(false);
+  const [boot, setBoot] = useState<"loading" | "ready" | "error">("loading");
+  const [bootError, setBootError] = useState("");
 
   useEffect(() => {
     const wrap = wrapRef.current;
@@ -72,14 +74,22 @@ function Play({ onExit }: { onExit: () => void }) {
     const rt = new GameRuntime();
     rtRef.current = rt;
     rt.onHud = setHud;
-    let dead = false;
-    void GameView.create(canvas, wrap).then((view) => {
-      if (dead) {
-        view.destroy();
-        return;
-      }
-      rt.attach(view);
-    });
+    const ac = new AbortController();
+    void GameView.create(canvas, wrap, ac.signal)
+      .then((view) => {
+        if (ac.signal.aborted) {
+          view.destroy();
+          return;
+        }
+        rt.attach(view);
+        setBoot("ready");
+      })
+      .catch((err: unknown) => {
+        if (ac.signal.aborted || (err instanceof DOMException && err.name === "AbortError")) return;
+        const msg = err instanceof Error ? err.message : String(err);
+        setBootError(msg);
+        setBoot("error");
+      });
     const onKey = (e: KeyboardEvent) => {
       if (e.code === "Escape") {
         e.preventDefault();
@@ -104,7 +114,7 @@ function Play({ onExit }: { onExit: () => void }) {
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onUp);
     return () => {
-      dead = true;
+      ac.abort();
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onUp);
       rt.detach();
@@ -115,6 +125,21 @@ function Play({ onExit }: { onExit: () => void }) {
   return (
     <div className="play" ref={wrapRef}>
       <canvas ref={canvasRef} />
+      {boot === "loading" && (
+        <div className="overlay">
+          <h2>裂隙开启中</h2>
+          <p>正在载入角色与场景…</p>
+        </div>
+      )}
+      {boot === "error" && (
+        <div className="overlay">
+          <h2>无法进入关卡</h2>
+          <p className="howto">{bootError}</p>
+          <button className="btn" onClick={onExit}>
+            返回
+          </button>
+        </div>
+      )}
       <div className="hud">
         <div className="hud-top">
           <div className="tag">{hud?.title ?? "裂隙初醒"}</div>
