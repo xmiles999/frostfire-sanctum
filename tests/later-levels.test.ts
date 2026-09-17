@@ -46,6 +46,21 @@ describe("later levels official clears", () => {
 });
 
 describe("later levels punishments", () => {
+  it("walking into the tide lever changes tide without interact", () => {
+    const sim = createSim(LEVEL_02);
+    sim.ember.x = 16.2 * TILE;
+    sim.ember.y = 5.5 * TILE - sim.ember.h;
+    sim.ember.onGround = true;
+    const ember = { ...EMPTY_INTENT, right: true };
+    const frost = { ...EMPTY_INTENT };
+    const limit = Math.ceil(3 / PHYS_DT);
+    for (let i = 0; i < limit; i++) {
+      stepSim(sim, { ember, frost });
+      if (sim.tideLevel === 2) break;
+    }
+    expect(sim.tideLevel).toBe(2);
+  });
+
   it("ember standing on the low path at deep tide is downed", () => {
     const sim = createSim(LEVEL_02);
     sim.tideLevel = 2;

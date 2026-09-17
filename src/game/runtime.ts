@@ -27,6 +27,7 @@ export interface HudModel {
   title: string;
   puzzleHint: string;
   levelId: string;
+  restartHeldMs: number;
 }
 
 export class GameRuntime {
@@ -50,6 +51,7 @@ export class GameRuntime {
     this.sim = createSim(this.level);
     this.acc = 0;
     this.recordedClear = false;
+    this.input.restartHeldMs = 0;
     this.view?.resetWorld();
   }
 
@@ -82,6 +84,17 @@ export class GameRuntime {
   }
 
   private tick(dt: number): void {
+    const restartDown = this.input.keys.has(this.input.bindings.restart);
+    if (restartDown && (this.sim.status === "playing" || this.sim.status === "rescue_window")) {
+      this.input.restartHeldMs += dt * 1000;
+      if (this.input.restartHeldMs >= 400) {
+        this.restart();
+        this.input.restartHeldMs = 0;
+        this.input.up(this.input.bindings.restart);
+      }
+    } else if (!restartDown) {
+      this.input.restartHeldMs = 0;
+    }
     if (this.sim.status !== "paused" && this.sim.status !== "failed" && this.sim.status !== "cleared") {
       this.acc += dt;
       let steps = 0;
@@ -113,6 +126,7 @@ export class GameRuntime {
       title: this.sim.level.title,
       puzzleHint: this.sim.puzzleHint,
       levelId: this.sim.level.id,
+      restartHeldMs: this.input.restartHeldMs,
     });
   }
 }

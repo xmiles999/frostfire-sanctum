@@ -189,14 +189,18 @@ function official02(sim: SimState): PairIntent {
   }
 
   if (sim.tideLevel === 2) {
-    goX(ember, sim, sim.ember, 18 * TILE);
-    if (seated && Math.abs(cxOf(sim.ember) - L02.leverX) < 48) pulseInteract(ember, sim.ember);
+    if (seated) {
+      const onLever = Math.abs(cxOf(sim.ember) - L02.leverX) < 42;
+      goX(ember, sim, sim.ember, onLever ? L02.waitLeverX : L02.leverX);
+    } else {
+      goX(ember, sim, sim.ember, L02.waitLeverX);
+    }
     goX(frost, sim, sim.frost, seated ? 44 * TILE : L02.wellX);
     return { ember, frost };
   }
 
-  goX(ember, sim, sim.ember, L02.leverX);
-  if (wellReady && Math.abs(cxOf(sim.ember) - L02.leverX) < 48) pulseInteract(ember, sim.ember);
+  if (!wellReady) goX(ember, sim, sim.ember, L02.waitLeverX);
+  else goX(ember, sim, sim.ember, L02.leverX);
   if (!wellReady) goX(frost, sim, sim.frost, crate ? crate.x + crate.w + 36 : L02.wellEdgeX);
   else goX(frost, sim, sim.frost, L02.wellEdgeX - 8);
   return { ember, frost };

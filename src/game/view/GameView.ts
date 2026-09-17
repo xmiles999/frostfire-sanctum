@@ -5,6 +5,7 @@ import {
   Container,
   Graphics,
   Sprite,
+  Text,
   Texture,
   TilingSprite,
 } from "pixi.js";
@@ -17,7 +18,7 @@ import {
 import { makeCamera, updateCamera, type Camera } from "../engine/camera";
 import { rectsOverlap, type Rect } from "../engine/aabb";
 import { actorRect } from "../engine/physics";
-import type { ActorState, Hazard, SimState } from "../sim/types";
+import type { ActorState, CrateState, Hazard, LeverSpec, SimState } from "../sim/types";
 import { activeHazards, standingOnPlate } from "../sim/world";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/?$/, "/");
@@ -83,6 +84,7 @@ export class GameView {
   private plateFrost!: Sprite;
   private altar!: Sprite;
   private doorSprites: Sprite[] = [];
+  private worldSigns = new Map<string, Text>();
   private liquids: {
     kind: "lava" | "water";
     rect: Rect;
@@ -379,6 +381,7 @@ export class GameView {
     this.paintSteam(sim);
     this.paintMechanisms(sim, doorProgress);
     this.paintPuzzles(sim);
+    this.syncWorldSigns(sim);
     this.paintMarks(sim);
     this.wisp.visible = sim.wisp.nestX > 0;
     this.pose(this.ember, sim.ember, "ember");
@@ -668,6 +671,168 @@ export class GameView {
     }
   }
 
+  private paintWell(sim: SimState, g: Graphics): void {
+    const plate = sim.level.tide?.wellPlate;
+    if (!plate) return;
+    const crate = sim.crates[0];
+    const seated =
+      !!crate &&
+      crate.onGround &&
+      crate.x + crate.w / 2 >= plate.x &&
+      crate.x + crate.w / 2 <= plate.x + plate.w &&
+      sim.tideLevel === 2;
+    const x = plate.x - 22;
+    const w = plate.w + 44;
+    const lipY = plate.y - 18;
+    g.roundRect(x - 8, lipY + 14, w + 16, 28, 6);
+    g.fill({ color: 0x2a2620, alpha: 0.55 });
+    g.roundRect(x, lipY, w, 26, 10);
+    g.fill({ color: 0x6a6054, alpha: 1 });
+    g.stroke({ color: 0xe4d3b0, width: 3, alpha: 0.95 });
+    g.roundRect(x + 12, lipY + 8, w - 24, 16, 8);
+    g.fill({ color: 0x12161c, alpha: 0.96 });
+    const waterH = sim.tideLevel === 0 ? 5 : sim.tideLevel === 1 ? 11 : 15;
+    g.roundRect(x + 14, lipY + 22 - waterH, w - 28, waterH, 5);
+    g.fill({ color: sim.tideLevel === 2 ? 0x163848 : 0x2f6d82, alpha: 0.88 });
+    g.roundRect(x + 18, lipY + 22 - waterH, w - 36, 3, 2);
+    g.fill({ color: 0xc5eaf4, alpha: 0.35 + Math.sin(sim.timeMs * 0.006) * 0.08 });
+    g.roundRect(plate.x + 10, plate.y + 2, plate.w - 20, Math.max(8, plate.h - 2), 3);
+    g.fill({ color: seated ? 0xf0d078 : 0x7a6238, alpha: 0.95 });
+    if (seated) {
+      g.roundRect(plate.x + 10, plate.y + 2, plate.w - 20, 8, 3);
+      g.stroke({ color: 0xfff3c0, width: 2, alpha: 0.85 });
+    }
+    g.roundRect(x + 4, lipY - 78, 10, 78, 3);
+    g.roundRect(x + w - 14, lipY - 78, 10, 78, 3);
+    g.fill({ color: 0x5c5348, alpha: 1 });
+    g.roundRect(x, lipY - 86, w, 12, 4);
+    g.fill({ color: 0x7a7062, alpha: 1 });
+    g.stroke({ color: 0xd9cbb0, width: 2, alpha: 0.8 });
+    g.rect(x + w / 2 - 1.5, lipY - 74, 3, 48);
+    g.fill({ color: 0x9a8868, alpha: 0.95 });
+    g.circle(x + w / 2, lipY - 24, 7);
+    g.fill({ color: 0x6a8ea0, alpha: 0.8 });
+    g.stroke({ color: 0xd7eef4, width: 1.5, alpha: 0.7 });
+  }
+
+  private paintCrate(sim: SimState, g: Graphics, crate: CrateState): void {
+    g.roundRect(crate.x, crate.y, crate.w, crate.h, 5);
+    g.fill({ color: 0x8d6a3c, alpha: 1 });
+    g.stroke({ color: 0xe6d2a8, width: 2, alpha: 0.95 });
+    g.roundRect(crate.x + 5, crate.y + 6, crate.w - 10, 5, 2);
+    g.roundRect(crate.x + 5, crate.y + crate.h - 11, crate.w - 10, 5, 2);
+    g.fill({ color: 0x4d4538, alpha: 0.95 });
+    g.rect(crate.x + crate.w / 2 - 3, crate.y + 4, 6, crate.h - 8);
+    g.fill({ color: 0x3f3a32, alpha: 0.85 });
+    if (sim.tideLevel > 0) {
+      g.roundRect(crate.x + 6, crate.y + 8, crate.w - 12, 7, 2);
+      g.fill({ color: 0x6aa0c8, alpha: 0.4 + sim.tideLevel * 0.18 });
+    }
+  }
+
+  private paintLever(sim: SimState, g: Graphics, lever: LeverSpec): void {
+    const r = lever.rect;
+    const cx = r.x + r.w * 0.42;
+    const baseY = r.y + r.h;
+    g.roundRect(r.x - 10, baseY - 18, r.w + 28, 22, 6);
+    g.fill({ color: 0x4a453c, alpha: 1 });
+    g.stroke({ color: 0xd7c6a4, width: 2, alpha: 0.9 });
+    g.roundRect(cx - 16, r.y - 8, 32, r.h + 10, 6);
+    g.fill({ color: 0x2f2c28, alpha: 0.96 });
+    const gaugeX = r.x + r.w + 8;
+    const gaugeY = r.y - 36;
+    g.roundRect(gaugeX, gaugeY, 16, 64, 4);
+    g.fill({ color: 0x1c2228, alpha: 0.92 });
+    g.stroke({ color: 0xb7c4c8, width: 1.5, alpha: 0.85 });
+    const fillH = sim.tideLevel === 0 ? 14 : sim.tideLevel === 1 ? 34 : 54;
+    if (lever.kind === "tide") {
+      g.roundRect(gaugeX + 3, gaugeY + 60 - fillH, 10, fillH, 3);
+      g.fill({ color: sim.tideLevel === 2 ? 0x1f5a72 : 0x4aa0b8, alpha: 0.95 });
+      for (const [i, gy] of [gaugeY + 46, gaugeY + 26, gaugeY + 8].entries()) {
+        g.rect(gaugeX - 5, gy, 5, 2);
+        g.fill({ color: i === sim.tideLevel ? 0xffe08a : 0x8a8f92, alpha: 1 });
+      }
+    } else {
+      g.roundRect(gaugeX + 3, gaugeY + 8, 10, sim.gearArmedMs !== null ? 48 : 10, 3);
+      g.fill({ color: sim.gearArmedMs !== null ? 0xe08a3a : 0x6a645a, alpha: 0.95 });
+    }
+    const angle =
+      lever.kind === "tide"
+        ? sim.tideLevel === 0
+          ? -1.15
+          : sim.tideLevel === 2
+            ? 1.05
+            : 0.22
+        : sim.gearArmedMs !== null
+          ? 0.9
+          : -0.95;
+    const len = 62;
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    const nx = -s * 5;
+    const ny = c * 5;
+    const hx = cx + c * len;
+    const hy = r.y + 10 + s * len;
+    g.poly([cx + nx, r.y + 10 + ny, hx + nx, hy + ny, hx - nx, hy - ny, cx - nx, r.y + 10 - ny]);
+    g.fill({ color: lever.kind === "tide" ? 0xc4a36a : 0xb0a898, alpha: 1 });
+    g.stroke({ color: 0xf0e2c4, width: 1.5, alpha: 0.85 });
+    g.circle(cx, r.y + 10, 7);
+    g.fill({ color: 0x8a7a58, alpha: 1 });
+    g.stroke({ color: 0xf2e6c8, width: 2, alpha: 0.9 });
+    g.circle(hx, hy, 9);
+    g.fill({ color: 0xe8dcc4, alpha: 1 });
+    g.stroke({ color: 0x5a4030, width: 2, alpha: 0.85 });
+    g.roundRect(cx - 36, r.y - 52, 72, 22, 4);
+    g.fill({ color: 0x2a2218, alpha: 0.82 });
+    g.stroke({ color: 0xe8d7a8, width: 1.5, alpha: 0.9 });
+  }
+
+  private worldSign(id: string, text: string): Text {
+    let sign = this.worldSigns.get(id);
+    if (!sign) {
+      sign = new Text({
+        text,
+        style: {
+          fontFamily: "Noto Sans SC, Source Han Sans SC, sans-serif",
+          fontSize: 13,
+          fill: 0xfff4dc,
+          fontWeight: "600",
+          stroke: { color: 0x140f0a, width: 4 },
+        },
+      });
+      sign.anchor.set(0.5, 1);
+      this.world.addChild(sign);
+      this.worldSigns.set(id, sign);
+    }
+    sign.text = text;
+    return sign;
+  }
+
+  private syncWorldSigns(sim: SimState): void {
+    const seen = new Set<string>();
+    for (const lever of sim.level.levers ?? []) {
+      const id = `lever:${lever.id}`;
+      seen.add(id);
+      const sign = this.worldSign(id, lever.kind === "tide" ? "推过拨杆" : "推过启动");
+      sign.x = lever.rect.x + lever.rect.w / 2;
+      sign.y = lever.rect.y - 32;
+      sign.alpha = 0.88 + Math.sin(sim.timeMs * 0.008) * 0.1;
+    }
+    const well = sim.level.tide?.wellPlate;
+    if (well) {
+      seen.add("well");
+      const sign = this.worldSign("well", "推箱入井");
+      sign.x = well.x + well.w / 2;
+      sign.y = well.y - 88;
+      sign.alpha = 0.88;
+    }
+    for (const [id, sign] of this.worldSigns) {
+      if (seen.has(id)) continue;
+      sign.destroy();
+      this.worldSigns.delete(id);
+    }
+  }
+
   private paintPuzzles(sim: SimState): void {
     const g = this.mechanismFx;
     for (const ice of sim.level.tide?.ice ?? []) {
@@ -696,22 +861,9 @@ export class GameView {
       g.roundRect(ash.x, ash.y - 6, ash.w, ash.h + 8, 5);
       g.fill({ color: 0x5b534c, alpha: 0.95 });
     }
-    for (const crate of sim.crates) {
-      g.roundRect(crate.x, crate.y, crate.w, crate.h, 4);
-      g.fill({ color: 0x8a6a3a, alpha: 1 });
-      g.stroke({ color: 0xd7c39a, width: 2, alpha: 0.9 });
-      if (sim.tideLevel > 0) {
-        g.roundRect(crate.x + 4, crate.y + 6, crate.w - 8, 6, 2);
-        g.fill({ color: 0x6aa0c8, alpha: 0.45 + sim.tideLevel * 0.15 });
-      }
-    }
-    for (const lever of sim.level.levers ?? []) {
-      const pulled = lever.kind === "tide" ? sim.tideLevel !== 0 : sim.gearArmedMs !== null;
-      g.roundRect(lever.rect.x, lever.rect.y, lever.rect.w, lever.rect.h, 4);
-      g.fill({ color: 0x3d3a34, alpha: 0.95 });
-      g.roundRect(lever.rect.x + 6, lever.rect.y - 10, 8, lever.rect.h + 8, 3);
-      g.fill({ color: pulled ? 0xe08a3a : 0xcfc4b0, alpha: 1 });
-    }
+    if (sim.level.tide) this.paintWell(sim, g);
+    for (const crate of sim.crates) this.paintCrate(sim, g, crate);
+    for (const lever of sim.level.levers ?? []) this.paintLever(sim, g, lever);
     for (const plate of sim.level.extraPlates ?? []) {
       const on = sim.extraHeld[plate.id];
       g.roundRect(plate.rect.x, plate.rect.y - 4, plate.rect.w, plate.rect.h + 6, 5);

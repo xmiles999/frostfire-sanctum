@@ -236,6 +236,7 @@ export interface SimState {
   phaseLockMs: number;
   extraHeld: Record<string, boolean>;
   extraHeldMs: Record<string, number>;
+  leverInside: Record<string, boolean>;
   gearArmedMs: number | null;
   puzzleHint: string;
 }

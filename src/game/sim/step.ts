@@ -305,12 +305,27 @@ function nearRect(actor: ActorState, rect: Rect, pad = 18): boolean {
   });
 }
 
+function hittingLever(actor: ActorState, lever: { rect: Rect }): boolean {
+  if (actor.downed) return false;
+  return rectsOverlap(actorRect(actor), {
+    x: lever.rect.x - 8,
+    y: lever.rect.y - 12,
+    w: lever.rect.w + 16,
+    h: lever.rect.h + 24,
+  });
+}
+
 function stepLevers(sim: SimState, intents: PairIntent): void {
   const emberEdge = interactEdge(sim.ember, intents.ember);
   const frostEdge = interactEdge(sim.frost, intents.frost);
   for (const lever of sim.level.levers ?? []) {
+    const touching = hittingLever(sim.ember, lever) || hittingLever(sim.frost, lever);
+    const entered = touching && !sim.leverInside[lever.id];
+    sim.leverInside[lever.id] = touching;
     const used =
-      (emberEdge && nearRect(sim.ember, lever.rect)) || (frostEdge && nearRect(sim.frost, lever.rect));
+      entered ||
+      (emberEdge && nearRect(sim.ember, lever.rect)) ||
+      (frostEdge && nearRect(sim.frost, lever.rect));
     if (!used) continue;
     if (lever.kind === "tide") {
       sim.tideLevel = sim.tideLevel === 0 ? 2 : sim.tideLevel === 2 ? 1 : 0;
@@ -420,7 +435,17 @@ function stepPuzzles(sim: SimState, intents: PairIntent, dt: number): void {
   }
 
   if (puzzle === "tide") {
-    sim.puzzleHint = sim.tideLevel === 0 ? "潮位浅" : sim.tideLevel === 1 ? "潮位中" : "潮位深";
+    const crate = sim.crates[0];
+    const seated = crate && sim.level.tide ? crateOnPlate(crate, sim.level.tide.wellPlate) && sim.tideLevel === 2 : false;
+    if (sim.doorOpen) {
+      sim.puzzleHint = sim.tideLevel === 1 ? "门已开 · 冲槽" : "门已开 · 烬再推过拨杆到中档";
+    } else if (sim.tideLevel === 0) {
+      sim.puzzleHint = "浅 · 朔推箱到井，烬走上高台推过拨杆";
+    } else if (sim.tideLevel === 2) {
+      sim.puzzleHint = seated ? "井板已压 · 烬离开后再推过拨杆" : "深 · 朔把箱推进石圈水井";
+    } else {
+      sim.puzzleHint = "中 · 箱须在深水中压井板";
+    }
   } else if (puzzle === "burn") {
     const mid = sim.bridges.find((b) => b.id.includes("mid") || b.id.includes("2"));
     sim.puzzleHint = mid?.collapsed ? "灰烬已落" : mid?.ignited ? "桥在燃烧" : "栈道未燃";

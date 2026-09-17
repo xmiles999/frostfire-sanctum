@@ -88,6 +88,7 @@ export function createSim(level: LevelDocument): SimState {
     phaseLockMs: 0,
     extraHeld: {},
     extraHeldMs: {},
+    leverInside: {},
     gearArmedMs: null,
     puzzleHint: "",
   };

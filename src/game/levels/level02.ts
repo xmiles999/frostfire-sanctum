@@ -9,6 +9,7 @@ export const L02 = {
   emberSpawn: { x: 2.4 * T, y: 6 * T - ACTOR_H },
   frostSpawn: { x: 2.4 * T, y: 15 * T - ACTOR_H },
   leverX: 19 * T,
+  waitLeverX: 16.2 * T,
   holdEmberX: 25.6 * T,
   wellEdgeX: 38 * T,
   wellX: 42 * T,

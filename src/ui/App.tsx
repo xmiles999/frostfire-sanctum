@@ -64,8 +64,9 @@ function HowTo({ onBack, onPlay }: { onBack: () => void; onPlay: () => void }) {
           烬：<kbd>W A S D</kbd> 移动跳跃，<kbd>J</kbd> 交互。朔：<kbd>↑ ← ↓ →</kbd>，<kbd>;</kbd> 交互。
         </p>
         <p>第 1 关教伤害与诱敌。之后每关加一条新规则：潮位推箱、点燃木桥、反相双闸、延迟齿轮。</p>
+        <p>第 2 关拨杆：走上高台<strong>推过去就会拨</strong>，不用按 J。木桥点燃仍用烬的 <kbd>J</kbd>。</p>
         <p>
-          <kbd>Esc</kbd> 暂停，<kbd>R</kbd> 重开。1–8 关没有检查点。单人倒地有 8 秒救援窗（祭坛）。
+          关卡左上有 <strong>返回 / 暂停 / 重开</strong>。<kbd>Esc</kbd> 暂停，游玩中长按 <kbd>R</kbd> 0.4 秒重开，暂停或结算时点按 <kbd>R</kbd> 立即重开。1–8 关没有检查点。单人倒地有 8 秒救援窗（祭坛）。
         </p>
       </div>
       <div className="actions">
@@ -224,15 +225,53 @@ function Play({ levelId, onExit }: { levelId: string; onExit: () => void }) {
       )}
       <div className="hud">
         <div className="hud-top">
-          <div className="tag">{hud?.title ?? "裂隙初醒"}</div>
-          <div className="tag">{formatTime(hud?.timeMs ?? 0)} · 死亡 {hud?.deaths ?? 0}</div>
-          <div className="tag">{hud?.puzzleHint || steamLabel(hud?.steamPhase)}</div>
-          <div className={`tag ${hud?.doorOpen ? "door-live" : ""}`}>闩锁 {doorLabel(hud)}</div>
+          <div className="hud-chrome">
+            <button type="button" className="btn hud-btn" onClick={onExit}>
+              返回
+            </button>
+            <button
+              type="button"
+              className="btn hud-btn"
+              onClick={() => {
+                const rt = rtRef.current;
+                if (!rt) return;
+                if (rt.sim.status === "paused") {
+                  rt.resume();
+                  setPaused(false);
+                } else if (rt.sim.status === "playing" || rt.sim.status === "rescue_window") {
+                  rt.pause();
+                  setPaused(true);
+                }
+              }}
+            >
+              {paused ? "继续" : "暂停"} <kbd>Esc</kbd>
+            </button>
+            <button
+              type="button"
+              className="btn hud-btn ember"
+              onClick={() => {
+                rtRef.current?.restart();
+                setPaused(false);
+              }}
+            >
+              重开 <kbd>R</kbd>
+              {(hud?.restartHeldMs ?? 0) > 0 && hud?.status === "playing" ? (
+                <span className="hold-meter" style={{ width: `${Math.min(100, (hud.restartHeldMs / 400) * 100)}%` }} />
+              ) : null}
+            </button>
+          </div>
+          <div className="hud-stats">
+            <div className="tag">{hud?.title ?? "裂隙初醒"}</div>
+            <div className="tag">{formatTime(hud?.timeMs ?? 0)} · 死亡 {hud?.deaths ?? 0}</div>
+            <div className="tag">{hud?.puzzleHint || steamLabel(hud?.steamPhase)}</div>
+            <div className={`tag ${hud?.doorOpen ? "door-live" : ""}`}>闩锁 {doorLabel(hud)}</div>
+          </div>
         </div>
         <div className="hud-bot">
-          <div className={`tag ember`}>烬 {hud?.plateEmber ? "压板" : "行动"}</div>
-          {hud?.separated ? <div className="tag warn">失联 · 远端减速</div> : <div />}
-          <div className={`tag frost`}>朔 {hud?.plateFrost ? "压板" : "行动"}</div>
+          <div className={`tag ember`}>烬 WASD + J</div>
+          <div className="tag keys">朔 ↑←↓→ + ;　Esc 暂停　长按 R 重开</div>
+          {hud?.separated ? <div className="tag warn">失联 · 远端减速</div> : null}
+          <div className={`tag frost`}>{hud?.plateFrost || hud?.plateEmber ? "压板中" : "行动中"}</div>
         </div>
       </div>
       {hud?.status === "rescue_window" && (
@@ -266,7 +305,7 @@ function Play({ levelId, onExit }: { levelId: string; onExit: () => void }) {
               重开
             </button>
             <button className="btn" onClick={onExit}>
-              离开
+              返回选关
             </button>
           </div>
         </div>
