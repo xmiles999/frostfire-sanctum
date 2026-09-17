@@ -1,0 +1,99 @@
+:root {
+  color-scheme: dark;
+  --bg: #07080c;
+  --ink: #f3ebe0;
+  --muted: #b7ab9c;
+  --ember: #e36a2a;
+  --frost: #7ec8e3;
+  --gold: #d4a24a;
+  font-family: "Songti SC", "Noto Serif SC", "Source Han Serif SC", Palatino, serif;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; height: 100%; background: var(--bg); color: var(--ink); }
+button, a { font: inherit; }
+
+.screen {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px;
+  background:
+    linear-gradient(90deg, rgba(120, 40, 10, 0.35), transparent 42%, transparent 58%, rgba(20, 50, 80, 0.4)),
+    #07080c;
+  background-size: cover;
+  text-align: center;
+}
+
+.screen h1 {
+  font-size: clamp(2.4rem, 6vw, 4.2rem);
+  letter-spacing: 0.18em;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+.screen .sub { color: var(--muted); margin-bottom: 36px; letter-spacing: 0.12em; }
+
+.actions { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+.btn {
+  border: 1px solid var(--gold);
+  background: rgba(12, 10, 8, 0.7);
+  color: var(--ink);
+  padding: 12px 28px;
+  cursor: pointer;
+  letter-spacing: 0.14em;
+}
+.btn:hover { background: rgba(212, 162, 74, 0.16); }
+.btn.ember { border-color: var(--ember); }
+.btn.frost { border-color: var(--frost); }
+
+.howto {
+  max-width: 720px;
+  text-align: left;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.howto kbd {
+  font-family: ui-monospace, monospace;
+  border: 1px solid #555;
+  padding: 0 6px;
+  color: var(--ink);
+}
+
+.play {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  background: #050608;
+}
+.play canvas { display: block; width: 100%; height: 100%; }
+.hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px 20px;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.06em;
+}
+.hud-top, .hud-bot { display: flex; justify-content: space-between; gap: 16px; }
+.tag { background: rgba(0,0,0,0.45); padding: 6px 10px; border-left: 3px solid var(--gold); }
+.tag.ember { border-color: var(--ember); }
+.tag.frost { border-color: var(--frost); }
+.warn { color: #ffcc88; }
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(5,6,8,0.72);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  gap: 18px;
+}
+.overlay h2 { margin: 0; letter-spacing: 0.2em; font-size: 2rem; }

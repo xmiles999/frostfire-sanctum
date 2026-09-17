@@ -1,0 +1,16 @@
+node_modules/
+.scratch/
+dist/
+.ssr/
+.logs/
+.vite/
+*.local
+.env
+.env.*
+!.env.example
+coverage/
+test-results/
+playwright-report/
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
