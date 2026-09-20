@@ -3,7 +3,7 @@ export const PHYS_DT = 1 / 120;
 export const MAX_PHYS_STEPS = 8;
 export const GRAVITY = 2400;
 /** Chosen so hang height is ~3.2 tiles (design doc 720px/s was inconsistent with 2400 gravity). */
-export const JUMP_SPEED = 900;
+export const JUMP_SPEED = 720;
 /** Releasing jump while rising trims the arc without making taps feel abrupt. */
 export const JUMP_RELEASE_MULTIPLIER = 0.52;
 export const EMBER_SPEED = 380;
@@ -11,8 +11,9 @@ export const FROST_SPEED = 350;
 export const COYOTE_MS = 80;
 export const JUMP_BUFFER_MS = 100;
 export const LAND_RECOVERY_MS = 120;
-export const ACTOR_W = 28;
-export const ACTOR_H = 70;
+export const ACTOR_W = 16;
+export const ACTOR_H = 34;
+export const HURT_MS = 420;
 export const MAX_SEPARATION = 28 * TILE;
 export const SEPARATION_SPEED_SCALE = 0.35;
 export const WISP_SPEED = 90;
@@ -45,4 +46,4 @@ export const BRIDGE_STAND_IGNITE_MS = 2500;
 export const BRIDGE_BURN_MS = 8000;
 export const GEAR_DELAY_MS = 1800;
 export const GEAR_WINDOW_MS = 1200;
-export const IGNITE_RANGE = 8 * TILE;
+export const IGNITE_RANGE = 14 * TILE;

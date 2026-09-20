@@ -28,8 +28,8 @@ function hazardAhead(sim: SimState, actor: ActorState, dir: 1 | -1, targetX: num
   const probe: Rect = {
     x: dir > 0 ? cx + 10 : cx - 80,
     y: footY - 16,
-    w: 70,
-    h: 20,
+    w: 48,
+    h: 16,
   };
   for (const h of activeHazards(sim)) {
     if (!rectsOverlap(probe, h.rect)) continue;
@@ -48,7 +48,7 @@ function shouldJump(sim: SimState, actor: ActorState, targetX: number): boolean 
   if (Math.abs(targetX - cx) < 18) return false;
   const dir = (targetX > cx ? 1 : -1) as 1 | -1;
   const footY = actor.y + actor.h;
-  const look = cx + dir * 42;
+  const look = cx + dir * 44;
   if (hazardAhead(sim, actor, dir, targetX)) return true;
   const solids = solidsNow(sim);
 
@@ -56,13 +56,13 @@ function shouldJump(sim: SimState, actor: ActorState, targetX: number): boolean 
     const lift = footY - s.y;
     const ahead = dir > 0 ? s.x : s.x + s.w;
     const dist = (ahead - cx) * dir;
-    return dist > 8 && dist < 1.7 * TILE && lift > 28 && lift < 165;
+    return dist > 6 && dist < 1.6 * TILE && lift > 18 && lift < 110;
   });
   if (ledgeUp) return true;
 
   if (hasSupport(solids, look, footY)) return false;
-  for (let d = 48; d <= 4.2 * TILE; d += 10) {
-    if (hasSupport(solids, look + dir * d, footY, 20)) return true;
+  for (let d = 36; d <= 3.4 * TILE; d += 10) {
+    if (hasSupport(solids, look + dir * d, footY, 18)) return true;
   }
   return false;
 }
@@ -141,7 +141,7 @@ function official01(sim: SimState): PairIntent {
 
   if (frostPastGate && cxOf(sim.ember) > 16.4 * TILE) {
     goX(ember, sim, sim.ember, L01.plateEmberX);
-    goFrost01(frost, sim, L01.plateFrostX);
+    steamAdvance(frost, sim, sim.frost, L01.steamWaitX, L01.plateFrostX);
     return { ember, frost };
   }
 

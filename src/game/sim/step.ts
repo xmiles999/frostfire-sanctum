@@ -10,6 +10,7 @@ import {
   FALL_SPEED_MAX,
   FROST_SPEED,
   GRAVITY,
+  HURT_MS,
   IGNITE_RANGE,
   LAVA_SPEED_SCALE,
   MAX_SEPARATION,
@@ -47,7 +48,8 @@ function downActor(sim: SimState, actor: ActorState, cause: string): void {
   actor.downed = true;
   actor.vx = 0;
   actor.vy = 0;
-  actor.anim = "downed";
+  actor.anim = "hurt";
+  actor.animTime = 0;
   sim.deaths += 1;
   sim.downedCause = cause;
 }
@@ -223,8 +225,9 @@ function stepActor(
   if (!actor.downed && actor.y > worldH + TILE) {
     downActor(sim, actor, "void");
   }
-  if (actor.downed) actor.anim = "downed";
-  else if (!actor.onGround) actor.anim = actor.vy < 0 ? "jump" : "fall";
+  if (actor.downed) {
+    actor.anim = actor.animTime * 1000 < HURT_MS ? "hurt" : "downed";
+  } else if (!actor.onGround) actor.anim = actor.vy < 0 ? "jump" : "fall";
   else if (actor.landMs > 0) actor.anim = "land";
   else if (Math.abs(actor.vx) > 8) actor.anim = "walk";
   else if (intent.interact) actor.anim = "interact";

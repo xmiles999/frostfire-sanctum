@@ -34,8 +34,12 @@ function frameUrls(dir: string, count: number): string[] {
   return Array.from({ length: count }, (_, i) => asset(`${dir}/${String(i).padStart(2, "0")}.png`));
 }
 
-/** On-screen character height in world px. Collision is 70; keep a little cape/hair overshoot. */
-const SPRITE_H = 96;
+/** On-screen character height in world px. Collision is 34; keep a little cape/hair overshoot. */
+const SPRITE_H = 44;
+const WISP_H = 32;
+const PLATE_H = 28;
+const ALTAR_H = 64;
+const HURT_FPS = 12;
 
 function criticalUrls(): string[] {
   return [
@@ -63,11 +67,13 @@ function restUrls(): string[] {
     ...frameUrls("assets/characters/ember/idle", 8).slice(1),
     ...frameUrls("assets/characters/ember/walk", 12),
     ...frameUrls("assets/characters/ember/jump", 6),
-    asset("assets/characters/ember/downed/00.png"),
+    ...frameUrls("assets/characters/ember/hurt", 6),
+    ...frameUrls("assets/characters/ember/downed", 4),
     ...frameUrls("assets/characters/frost/idle", 8).slice(1),
     ...frameUrls("assets/characters/frost/walk", 12),
     ...frameUrls("assets/characters/frost/jump", 6),
-    asset("assets/characters/frost/downed/00.png"),
+    ...frameUrls("assets/characters/frost/hurt", 6),
+    ...frameUrls("assets/characters/frost/downed", 4),
   ];
 }
 
@@ -99,6 +105,8 @@ export class GameView {
   };
   cam: Camera;
   private parent: HTMLElement;
+  private deathFx: { x: number; y: number; who: "ember" | "frost"; age: number }[] = [];
+  private downedSeen = { ember: false, frost: false };
 
   constructor(app: Application, parent: HTMLElement) {
     this.app = app;
@@ -175,7 +183,7 @@ export class GameView {
   private solidKind(r: Rect, worldH: number): "ember" | "frost" | "ceiling" | "wall" {
     if (r.h >= r.w * 1.5) return "wall";
     if (r.y <= TILE * 0.6) return "ceiling";
-    if (r.y >= worldH - 6 * TILE) return "frost";
+    if (r.y >= worldH * 0.55) return "frost";
     return "ember";
   }
 
@@ -211,14 +219,16 @@ export class GameView {
         walk: this.seq("assets/characters/ember/walk", 12, emberIdle0),
         jump: this.seq("assets/characters/ember/jump", 6, emberIdle0),
         fall: this.seq("assets/characters/ember/jump", 6, emberIdle0),
-        downed: [emberIdle0],
+        hurt: this.seq("assets/characters/ember/hurt", 6, emberIdle0),
+        downed: this.seq("assets/characters/ember/downed", 4, emberIdle0),
       },
       frost: {
         idle: this.seq("assets/characters/frost/idle", 8, frostIdle0),
         walk: this.seq("assets/characters/frost/walk", 12, frostIdle0),
         jump: this.seq("assets/characters/frost/jump", 6, frostIdle0),
         fall: this.seq("assets/characters/frost/jump", 6, frostIdle0),
-        downed: [frostIdle0],
+        hurt: this.seq("assets/characters/frost/hurt", 6, frostIdle0),
+        downed: this.seq("assets/characters/frost/downed", 4, frostIdle0),
       },
     };
 
@@ -228,9 +238,9 @@ export class GameView {
     this.ember = new Sprite(this.frames.ember.idle[0]);
     this.frost = new Sprite(this.frames.frost.idle[0]);
     this.wisp = new Sprite(this.tex("assets/fx/wisp.png"));
-    this.plateEmber = this.sit(this.tex("assets/ui/pressure-plate.png"), { x: 0, y: 0, w: 1, h: 1 }, 44);
-    this.plateFrost = this.sit(this.tex("assets/ui/pressure-plate.png"), { x: 0, y: 0, w: 1, h: 1 }, 44);
-    this.altar = this.sit(this.tex("assets/levels/01/altar.png"), { x: 0, y: 0, w: 1, h: 1 }, 96);
+    this.plateEmber = this.sit(this.tex("assets/ui/pressure-plate.png"), { x: 0, y: 0, w: 1, h: 1 }, PLATE_H);
+    this.plateFrost = this.sit(this.tex("assets/ui/pressure-plate.png"), { x: 0, y: 0, w: 1, h: 1 }, PLATE_H);
+    this.altar = this.sit(this.tex("assets/levels/01/altar.png"), { x: 0, y: 0, w: 1, h: 1 }, ALTAR_H);
 
     for (const s of [this.ember, this.frost, this.wisp]) s.anchor.set(0.5, 1);
 
@@ -253,12 +263,14 @@ export class GameView {
     this.frames.ember.walk = this.seq("assets/characters/ember/walk", 12, emberIdle0);
     this.frames.ember.jump = this.seq("assets/characters/ember/jump", 6, emberIdle0);
     this.frames.ember.fall = this.frames.ember.jump;
-    this.frames.ember.downed = [this.tex("assets/characters/ember/downed/00.png")];
+    this.frames.ember.hurt = this.seq("assets/characters/ember/hurt", 6, emberIdle0);
+    this.frames.ember.downed = this.seq("assets/characters/ember/downed", 4, this.tex("assets/characters/ember/downed/00.png"));
     this.frames.frost.idle = this.seq("assets/characters/frost/idle", 8, frostIdle0);
     this.frames.frost.walk = this.seq("assets/characters/frost/walk", 12, frostIdle0);
     this.frames.frost.jump = this.seq("assets/characters/frost/jump", 6, frostIdle0);
     this.frames.frost.fall = this.frames.frost.jump;
-    this.frames.frost.downed = [this.tex("assets/characters/frost/downed/00.png")];
+    this.frames.frost.hurt = this.seq("assets/characters/frost/hurt", 6, frostIdle0);
+    this.frames.frost.downed = this.seq("assets/characters/frost/downed", 4, this.tex("assets/characters/frost/downed/00.png"));
   }
 
   destroy(): void {
@@ -273,6 +285,8 @@ export class GameView {
     this.props.removeChildren();
     this.liquids = [];
     this.doorSprites = [];
+    this.deathFx = [];
+    this.downedSeen = { ember: false, frost: false };
   }
 
   private layoutProps(sim: SimState): void {
@@ -333,9 +347,10 @@ export class GameView {
     this.props.addChild(this.plateEmber, this.plateFrost, this.altar);
 
     const roomW = sim.level.size.w;
+    const worldHpx = sim.level.size.h * TILE;
     for (const t of [0.22, 0.44, 0.66, 0.82]) {
-      const col = this.tile(wall, { x: t * roomW * TILE, y: 9 * TILE, w: 18, h: 6 * TILE });
-      col.alpha = 0.38;
+      const col = this.tile(wall, { x: t * roomW * TILE, y: 3 * TILE, w: 14, h: worldHpx - 4 * TILE });
+      col.alpha = 0.32;
       this.props.addChild(col);
     }
   }
@@ -389,12 +404,13 @@ export class GameView {
     this.paintMechanisms(sim, doorProgress);
     this.paintPuzzles(sim);
     this.paintMarks(sim);
+    this.syncDeath(sim, dt);
     this.wisp.visible = sim.wisp.nestX > 0;
     this.pose(this.ember, sim.ember, "ember");
     this.pose(this.frost, sim.frost, "frost");
     this.wisp.x = sim.wisp.x;
-    this.wisp.y = sim.wisp.y + 22;
-    const wispS = 52 / Math.max(this.wisp.texture.height, 1);
+    this.wisp.y = sim.wisp.y + 14;
+    const wispS = WISP_H / Math.max(this.wisp.texture.height, 1);
     this.wisp.scale.set(wispS * sim.wisp.facing, wispS);
     this.wisp.alpha = sim.wisp.phase === "idle" ? 0.85 : 1;
     this.wisp.tint = sim.wisp.phase === "acquire" ? 0xffdd88 : 0xffffff;
@@ -403,8 +419,10 @@ export class GameView {
 
   private pose(sprite: Sprite, actor: ActorState, who: "ember" | "frost"): void {
     const set = this.frames[who];
-    const key =
-      actor.anim === "fall" || actor.anim === "land"
+    const dying = actor.anim === "hurt" || actor.anim === "downed";
+    const key = dying
+      ? actor.anim
+      : actor.anim === "fall" || actor.anim === "land"
         ? actor.anim === "land"
           ? "idle"
           : "jump"
@@ -412,18 +430,60 @@ export class GameView {
           ? "idle"
           : actor.anim;
     const frames = set[key] ?? set.idle;
-    const fps = actor.anim === "walk" ? 14 : actor.anim === "idle" ? 8 : 10;
-    const idx = Math.floor(actor.animTime * fps) % frames.length;
+    const fps = actor.anim === "walk" ? 14 : actor.anim === "idle" ? 8 : actor.anim === "hurt" ? HURT_FPS : 10;
+    const idx = dying
+      ? Math.min(frames.length - 1, Math.floor(actor.animTime * fps))
+      : Math.floor(actor.animTime * fps) % frames.length;
     sprite.texture = frames[idx]!;
     sprite.x = actor.x + actor.w / 2;
     sprite.y = actor.y + actor.h;
     const s = SPRITE_H / Math.max(sprite.texture.height, 1);
     const landT = Math.max(0, Math.min(1, actor.landMs / 120));
-    const squash = actor.onGround ? landT * 0.1 : 0;
-    const stretch = !actor.onGround && actor.vy < -180 ? 0.035 : 0;
+    const deathSquash = dying ? Math.min(0.16, actor.animTime * 0.35) : 0;
+    const squash = dying ? deathSquash : actor.onGround ? landT * 0.1 : 0;
+    const stretch = !dying && !actor.onGround && actor.vy < -180 ? 0.035 : 0;
     sprite.scale.set(s * actor.facing * (1 + squash - stretch), s * (1 - squash + stretch));
-    sprite.rotation = actor.onGround ? 0 : Math.max(-0.08, Math.min(0.08, actor.vx / 4200));
-    sprite.alpha = actor.invulnMs > 0 ? 0.7 : 1;
+    sprite.rotation = dying || actor.onGround ? 0 : Math.max(-0.08, Math.min(0.08, actor.vx / 4200));
+    sprite.alpha = actor.invulnMs > 0 ? 0.7 : dying ? Math.max(0.78, 1 - actor.animTime * 0.12) : 1;
+  }
+
+  private syncDeath(sim: SimState, dt: number): void {
+    for (const who of ["ember", "frost"] as const) {
+      const actor = sim[who];
+      if (actor.downed && !this.downedSeen[who]) {
+        this.deathFx.push({
+          x: actor.x + actor.w / 2,
+          y: actor.y + actor.h * 0.55,
+          who,
+          age: 0,
+        });
+      }
+      this.downedSeen[who] = actor.downed;
+    }
+    for (const fx of this.deathFx) fx.age += dt;
+    this.deathFx = this.deathFx.filter((fx) => fx.age < 0.85);
+  }
+
+  private paintDeathFx(g: Graphics): void {
+    for (const fx of this.deathFx) {
+      const t = Math.min(1, fx.age / 0.85);
+      const ember = fx.who === "ember";
+      const count = 14;
+      for (let i = 0; i < count; i++) {
+        const ang = (i / count) * Math.PI * 2 + (ember ? 0.2 : 0.7);
+        const dist = (10 + (i % 5) * 7) * (0.35 + t);
+        const px = fx.x + Math.cos(ang) * dist;
+        const py = fx.y + Math.sin(ang) * dist * 0.55 - t * 18;
+        const r = ember ? 2.2 + (i % 3) : 1.8 + (i % 3);
+        g.circle(px, py, r * (1 - t * 0.65));
+        g.fill({
+          color: ember ? (i % 2 ? 0xffb040 : 0xff6a1a) : i % 2 ? 0xd8f4ff : 0x8edfff,
+          alpha: (1 - t) * 0.9,
+        });
+      }
+      g.ellipse(fx.x, fx.y + 16, 16 + t * 18, 5 + t * 3);
+      g.fill({ color: ember ? 0xc45a22 : 0x7ec8e8, alpha: (1 - t) * 0.28 });
+    }
   }
 
   private flowLiquids(dt: number): void {
@@ -624,6 +684,7 @@ export class GameView {
     g.fill({ color: 0x3aa0c8, alpha: 0.22 });
     g.stroke({ color: 0x9be7ff, width: 3, alpha: 0.95 });
 
+    this.paintDeathFx(g);
     for (const a of [sim.ember, sim.frost]) {
       if (a.landMs > 0) {
         const t = 1 - Math.max(0, Math.min(1, a.landMs / 120));
@@ -1002,7 +1063,7 @@ export class GameView {
     if (!sim.level.phaseGates?.length) return;
     const lavaOpen = sim.phase === 0;
     const gx = sim.level.phaseGates[0]!.rects[0]!.x + 28;
-    const gy = 8 * TILE;
+    const gy = sim.level.size.h * TILE * 0.5;
     g.circle(gx, gy, 22);
     g.fill({ color: 0x2a2620, alpha: 0.92 });
     g.stroke({ color: 0xb7a078, width: 3, alpha: 0.9 });

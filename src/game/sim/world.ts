@@ -8,7 +8,7 @@ export function standingOnPlate(
   if (actor.downed || !actor.onGround) return false;
   const footX = actor.x + actor.w / 2;
   const footY = actor.y + actor.h;
-  const inset = Math.min(10, plate.w * 0.12);
+  const inset = Math.min(4, plate.w * 0.08);
   return (
     footX >= plate.x + inset &&
     footX <= plate.x + plate.w - inset &&
