@@ -49,7 +49,7 @@ describe("later levels punishments", () => {
   it("walking into the tide lever changes tide without interact", () => {
     const sim = createSim(LEVEL_02);
     sim.ember.x = 5.4 * TILE;
-    sim.ember.y = 4 * TILE - sim.ember.h;
+    sim.ember.y = sim.level.spawns.ember.y;
     sim.ember.onGround = true;
     const ember = { ...EMPTY_INTENT, right: true };
     const frost = { ...EMPTY_INTENT };
@@ -65,7 +65,7 @@ describe("later levels punishments", () => {
     const sim = createSim(LEVEL_02);
     sim.tideLevel = 2;
     sim.ember.x = 4 * TILE;
-    sim.ember.y = 8 * TILE - sim.ember.h;
+    sim.ember.y = 5.6 * TILE - sim.ember.h;
     sim.ember.onGround = true;
     for (let i = 0; i < 8; i++) stepSim(sim, { ember: { ...EMPTY_INTENT }, frost: { ...EMPTY_INTENT } });
     expect(sim.ember.downed).toBe(true);

@@ -1,14 +1,10 @@
 # src/
 
-阶段 B 已放入引擎、第 1 关模拟、Pixi 呈现与 React 壳。
+当前实现第 1–5 关。真实入口与目录职责见 [开发文档](../docs/开发文档.md)，模块契约见 [接口文档](../docs/接口文档.md)，数据结构见 [数据模型](../docs/数据模型.md)。
 
-| 目录 | 阶段 B 起职责 |
-|---|---|
-| `game/engine/` | 固定时间步循环、输入、相机、碰撞 |
-| `game/actors/` | 焰行者 / 霜行者、动画状态机 |
-| `game/world/` | 材质、液体、伤害区、可逆地形 |
-| `game/systems/` | 机关、解谜图、救援、评分 |
-| `game/levels/` | 关卡 JSON schema 与 18 关数据 |
-| `ui/` | React 壳：封面、选关、HUD、设置 |
-
-契约见 `docs/接口文档.md` 与 `docs/数据模型.md`。
+- `game/engine/`：输入、物理、相机和常量。
+- `game/sim/`：单局状态、收集物、机关、伤害和结算。
+- `game/levels/`：五关 TypeScript 数据与布局装配，不是 18 关 JSON 加载器。
+- `game/view/`：Pixi 精灵、场景和机关显示。
+- `game/systems/`：输入回放和本地存档。
+- `ui/`：封面、说明、真实地形选关预览、HUD 与结算。

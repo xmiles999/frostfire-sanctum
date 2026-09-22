@@ -1,4 +1,4 @@
-import { tileRect } from "../engine/aabb";
+import { R, roomY, finishRoom } from "./layout";
 import {
   ACTOR_H,
   STAR_DEATHS_2,
@@ -8,12 +8,11 @@ import {
 import type { LevelDocument } from "../sim/types";
 
 const T = TILE;
-const R = (tx: number, ty: number, tw: number, th: number) => tileRect(tx, ty, tw, th, T);
 
 /** Pixel landmarks used by the official policy and tests. */
 export const L01 = {
-  emberSpawn: { x: 2.2 * T, y: 4 * T - ACTOR_H },
-  frostSpawn: { x: 2.2 * T, y: 19 * T - ACTOR_H },
+  emberSpawn: { x: 2.2 * T, y: roomY(4) * T - ACTOR_H },
+  frostSpawn: { x: 2.2 * T, y: roomY(19) * T - ACTOR_H },
   lureX: 11.6 * T,
   holdEmberX: 14.2 * T,
   frostWaitX: 2.4 * T,
@@ -21,7 +20,7 @@ export const L01 = {
   steamWaitX: 15.6 * T,
   holdFrostX: 18.2 * T,
   emberWaitGateX: 17.2 * T,
-  wispNest: { x: 12.4 * T, y: 7.15 * T },
+  wispNest: { x: 12.4 * T, y: roomY(7.15) * T },
   steamX: 16.6 * T,
   plateEmberX: 18.6 * T,
   plateFrostX: 18.6 * T,
@@ -31,11 +30,11 @@ export const L01 = {
   gapRight: 9.6 * T,
 };
 
-export const LEVEL_01: LevelDocument = {
+export const LEVEL_01: LevelDocument = finishRoom({
   id: "01",
   title: "裂隙初醒",
   tile: T,
-  size: { w: 24, h: 20 },
+  size: { w: 24, h: 14 },
   spawns: {
     ember: { ...L01.emberSpawn },
     frost: { ...L01.frostSpawn },
@@ -46,8 +45,8 @@ export const LEVEL_01: LevelDocument = {
   },
   solids: [
     R(0, 0, 24, 1),
-    R(0, 19, 6.6, 1),
-    R(8.2, 19, 15.8, 1),
+    R(0, 19, 7.2, 1),
+    R(8.8, 19, 15.2, 1),
     R(0, 0, 1, 20),
     R(23, 0, 1, 20),
     R(1, 8, 4.4, 0.5),
@@ -63,7 +62,7 @@ export const LEVEL_01: LevelDocument = {
   gatedSolids: [R(20, 1, 0.9, 11), R(20, 12, 0.9, 7)],
   hazards: [
     { id: "water_spawn", type: "water_shallow", rect: R(1, 18, 15.4, 1) },
-    { id: "lava_jump", type: "lava_shallow", rect: R(6.7, 18.8, 1.4, 1.2) },
+    { id: "lava_jump", type: "lava_shallow", rect: R(7.3, 18.8, 1.4, 1.2) },
     { id: "water_mid", type: "water_shallow", rect: R(16.2, 18, 3.8, 1) },
     { id: "gap_mist", type: "ice_mist", rect: R(6.15, 4.55, 3.15, 1.6) },
     { id: "gap_ember_well", type: "ice_mist", rect: R(5.5, 8.55, 4.6, 3.2) },
@@ -89,4 +88,4 @@ export const LEVEL_01: LevelDocument = {
       rects: [R(10.85, 16, 1.05, 3)],
     },
   ],
-};
+});

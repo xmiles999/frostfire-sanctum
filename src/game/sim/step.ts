@@ -32,7 +32,7 @@ import {
 import { actorRect, integrateActor } from "../engine/physics";
 import type { ActorState, Hazard, Intent, PairIntent, SimState } from "./types";
 import { steamAt } from "./steam";
-import { activeHazards, applyOneWays, crateRect, onIce, solidsNow, standingOnPlate } from "./world";
+import { activeHazards, applyOneWays, crateRect, onIce, runesReady, solidsNow, standingOnPlate } from "./world";
 
 function lethalFor(actor: ActorState, type: Hazard["type"], steamLethal: boolean): boolean {
   if (actor.invulnMs > 0 || actor.downed) return false;
@@ -152,6 +152,8 @@ function crateOnPlate(crate: SimState["crates"][number], plate: Rect): boolean {
 }
 
 function latchDoor(sim: SimState, latchMs = DOOR_LATCH_MS): void {
+  if (!runesReady(sim)) return;
+  if (sim.level.puzzle === "burn" && sim.level.bridges?.some(spec => spec.oily && !sim.bridges.find(b => b.id === spec.id)?.collapsed)) return;
   sim.doorOpen = true;
   sim.doorPhase = "opening";
   sim.doorMotionMs = DOOR_MOTION_MS;
@@ -332,7 +334,7 @@ function stepLevers(sim: SimState, intents: PairIntent): void {
     if (lever.kind === "tide") {
       sim.tideLevel = sim.tideLevel === 0 ? 2 : sim.tideLevel === 2 ? 1 : 0;
     }
-    if (lever.kind === "gear" && sim.gearArmedMs === null) {
+    if (lever.kind === "gear") {
       sim.gearArmedMs = 0;
     }
   }
@@ -410,6 +412,7 @@ function stepPhase(sim: SimState, dt: number): void {
 function stepGear(sim: SimState, dt: number): void {
   if (sim.gearArmedMs === null) return;
   sim.gearArmedMs += dt * 1000;
+  if (sim.level.gear?.cycleMs) sim.gearArmedMs %= sim.level.gear.cycleMs;
 }
 
 function stepPuzzles(sim: SimState, intents: PairIntent, dt: number): void {
@@ -445,7 +448,7 @@ function stepPuzzles(sim: SimState, intents: PairIntent, dt: number): void {
     sim.puzzleHint = sim.phase === 0 ? "熔岩闸" : "水闸";
   } else if (puzzle === "gear") {
     if (sim.gearArmedMs === null) sim.puzzleHint = "齿轮停";
-    else sim.puzzleHint = `轴 ${Math.min(3, 1 + Math.floor(sim.gearArmedMs / 1800))}`;
+    else sim.puzzleHint = `齿轮周期 ${(sim.gearArmedMs / 1000).toFixed(1)}s / ${((sim.level.gear?.cycleMs ?? 10000) / 1000).toFixed(0)}s`;
   } else {
     sim.puzzleHint = "";
   }
@@ -478,6 +481,12 @@ export function stepSim(sim: SimState, intents: PairIntent, dt = PHYS_DT): void 
 
   stepActor(sim, sim.ember, intents.ember, EMBER_SPEED, dt);
   stepActor(sim, sim.frost, intents.frost, FROST_SPEED, dt);
+  for (const gem of sim.level.collectibles ?? []) {
+    const actor = sim[gem.who];
+    if (!actor.downed && !sim.collected.includes(gem.id) && rectsOverlap(actorRect(actor), gem.rect)) {
+      sim.collected.push(gem.id);
+    }
+  }
   stepPuzzles(sim, intents, dt);
   stepWisp(sim, dt);
   applyHazards(sim);
@@ -485,7 +494,7 @@ export function stepSim(sim: SimState, intents: PairIntent, dt = PHYS_DT): void 
 
   const emberExit = rectsOverlap(actorRect(sim.ember), sim.level.exits.ember) && !sim.ember.downed;
   const frostExit = rectsOverlap(actorRect(sim.frost), sim.level.exits.frost) && !sim.frost.downed;
-  if (emberExit && frostExit) {
+  if (emberExit && frostExit && runesReady(sim) && sim.doorOpen) {
     sim.bothInExitMs += dt * 1000;
     if (sim.bothInExitMs >= EXIT_HOLD_MS) sim.status = "cleared";
   } else {
@@ -513,7 +522,8 @@ export function stepSim(sim: SimState, intents: PairIntent, dt = PHYS_DT): void 
 export function starsFor(sim: SimState): 1 | 2 | 3 {
   if (sim.status !== "cleared") return 1;
   const t = sim.timeMs;
-  if (sim.deaths === 0 && !sim.chargeUsed && t <= sim.level.score.starTimeMs) return 3;
+  const allGems = (sim.level.collectibles ?? []).every(g => sim.collected.includes(g.id));
+  if (sim.deaths === 0 && !sim.chargeUsed && t <= sim.level.score.starTimeMs && allGems) return 3;
   if (sim.deaths <= sim.level.score.starDeaths) return 2;
   return 1;
 }

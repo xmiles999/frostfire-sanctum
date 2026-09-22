@@ -5,10 +5,59 @@ import { L02 } from "../levels/level02";
 import { L03 } from "../levels/level03";
 import { L04 } from "../levels/level04";
 import { L05 } from "../levels/level05";
+import { branchLayout } from "../levels/layout";
 import { steamAt } from "../sim/steam";
 import type { ActorState, Intent, PairIntent, SimState } from "../sim/types";
 import { EMPTY_INTENT } from "../sim/types";
 import { activeHazards, solidsNow, standingOnPlate } from "../sim/world";
+
+// Deterministic input-only traversal of the new stair branch. Never teleports actors.
+const branchProgress = new WeakMap<SimState, number>();
+const upperProgress = new WeakMap<SimState, number>();
+function collectRunes(sim: SimState): PairIntent | null {
+  const n = branchProgress.get(sim) ?? 0;
+  const layout = branchLayout(sim.level.id);
+  const targets = [
+    ...layout.steps.map(s => ({ x: s.x + s.w / 2, y: s.y })),
+    { x: layout.bonus.x + layout.bonus.w / 2, y: layout.bonus.y },
+    { x: layout.steps[2].x + 1, y: layout.steps[2].y },
+    { x: layout.dropX, y: 13.3 },
+    { x: 2.4, y: 13.3 },
+  ];
+  const ember = cloneIntent();
+  const frost = cloneIntent();
+  const rune = sim.level.collectibles?.find(g => g.id === "ember-rune");
+  let upperDone = true;
+  if (sim.level.id === "03" || sim.level.id === "04") {
+    const x = sim.level.id === "03" ? 6.6 : 7.4;
+    const drop = sim.level.id === "03" ? 5.3 : 6.2;
+    const route = [{ x: x - 2.3, y: 5.6 }, { x, y: 4.2 }, { x: 4.3, y: 2.8 }, { x, y: 4.2 }, { x: drop, y: 5.6 }];
+    if (sim.level.id === "03") route.pop(); // Cross the burned well from the raised stepping stone.
+    const stage = upperProgress.get(sim) ?? 0;
+    if (stage < route.length) {
+      upperDone = false;
+      if (followWaypoint(ember, sim.ember, route[stage])) upperProgress.set(sim, stage + 1);
+    } else if (sim.level.id === "04") goX(ember, sim, sim.ember, 9.6 * TILE);
+  } else if (rune && !sim.collected.includes(rune.id)) goX(ember, sim, sim.ember, rune.rect.x + rune.rect.w / 2);
+  else if (sim.level.id === "01") goX(ember, sim, sim.ember, L01.holdEmberX);
+  if (n >= targets.length) return upperDone ? null : { ember, frost };
+  const target = targets[n];
+  const a = sim.frost;
+  if (followWaypoint(frost, a, target, n === 5, n === 3 || n === 4)) {
+    branchProgress.set(sim, n + 1);
+  }
+  return { ember, frost };
+}
+
+function followWaypoint(intent: Intent, actor: ActorState, target: { x: number; y: number }, allowCrate = false, crossGap = false): boolean {
+  intent.right = cxOf(actor) < target.x * TILE - 2;
+  intent.left = cxOf(actor) > target.x * TILE + 2;
+  const rising = target.y * TILE < actor.y + actor.h - 8;
+  const needJump = rising || (crossGap && Math.abs(cxOf(actor) - target.x * TILE) > 20);
+  intent.jump = (needJump && actor.onGround && !actor.jumpWasHeld) || (!actor.onGround && actor.jumpWasHeld);
+  const atFloor = Math.abs(actor.y + actor.h - target.y * TILE) < 8 || (allowCrate && actor.y + actor.h > 12.6 * TILE);
+  return Math.abs(cxOf(actor) - target.x * TILE) < 8 && atFloor && actor.onGround;
+}
 
 function cloneIntent(): Intent {
   return { ...EMPTY_INTENT };
@@ -56,13 +105,15 @@ function shouldJump(sim: SimState, actor: ActorState, targetX: number): boolean 
     const lift = footY - s.y;
     const ahead = dir > 0 ? s.x : s.x + s.w;
     const dist = (ahead - cx) * dir;
-    return dist > 6 && dist < 1.6 * TILE && lift > 18 && lift < 110;
+    return dist > 6 && dist < 1.6 * TILE && lift > 18 && lift < 110 && s.y + s.h > actor.y + 4;
   });
   if (ledgeUp) return true;
 
   if (hasSupport(solids, look, footY)) return false;
   for (let d = 36; d <= 3.4 * TILE; d += 10) {
     if (hasSupport(solids, look + dir * d, footY, 18)) return true;
+    const landingX = look + dir * d;
+    if (solids.some(s => landingX >= s.x && landingX <= s.x + s.w && s.y > footY && s.y <= footY + 2 * TILE)) return true;
   }
   return false;
 }
@@ -97,6 +148,11 @@ function steamAdvance(
 ): void {
   const steam = steamAt(sim.timeMs);
   const cx = cxOf(actor);
+  // Traverse earlier pits with normal jumps; only walk once inside the steam crossing.
+  if (cx < waitX - 24) {
+    goX(intent, sim, actor, waitX);
+    return;
+  }
   if (cx > waitX + 28) {
     goWalk(intent, actor, targetX);
     return;
@@ -193,7 +249,7 @@ function official02(sim: SimState): PairIntent {
 
   if (sim.tideLevel === 2) {
     if (sim.doorOpen) {
-      const onLever = Math.abs(cxOf(sim.ember) - L02.leverX) < 42;
+      const onLever = Boolean(sim.leverInside.tide);
       goX(ember, sim, sim.ember, onLever ? L02.waitLeverX : L02.leverX);
     } else {
       goX(ember, sim, sim.ember, L02.waitLeverX);
@@ -341,15 +397,15 @@ function official05(sim: SimState): PairIntent {
     return { ember, frost };
   }
 
-  if (armed < 3000) {
+  if (!sim.collected.includes("frost-rune")) {
     goX(ember, sim, sim.ember, L05.holdEmberX);
-    goX(frost, sim, sim.frost, L05.frostChamberX);
+    if (cxOf(sim.frost) < 9.9 * TILE) goX(frost, sim, sim.frost, L05.frostChamberX);
+    else followWaypoint(frost, sim.frost, { x: 11.1, y: 11.7 });
     return { ember, frost };
   }
 
-  if (armed < 3600) {
+  if (armed < 3600 && cxOf(sim.frost) < 12.2 * TILE) {
     goX(ember, sim, sim.ember, L05.holdEmberX);
-    goX(frost, sim, sim.frost, L05.frostChamberX);
     return { ember, frost };
   }
 
@@ -369,6 +425,10 @@ function official05(sim: SimState): PairIntent {
 }
 
 export function officialPolicy(sim: SimState): PairIntent {
+  if (sim.level.collectibles?.length) {
+    const collect = collectRunes(sim);
+    if (collect) return collect;
+  }
   if (sim.level.id === "02") return official02(sim);
   if (sim.level.id === "03") return official03(sim);
   if (sim.level.id === "04") return official04(sim);

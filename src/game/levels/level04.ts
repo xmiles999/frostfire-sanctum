@@ -1,13 +1,12 @@
-import { tileRect } from "../engine/aabb";
+import { R, roomY, finishRoom } from "./layout";
 import { ACTOR_H, TILE } from "../engine/constants";
 import type { LevelDocument } from "../sim/types";
 
 const T = TILE;
-const R = (tx: number, ty: number, tw: number, th: number) => tileRect(tx, ty, tw, th, T);
 
 export const L04 = {
-  emberSpawn: { x: 2.2 * T, y: 8 * T - ACTOR_H },
-  frostSpawn: { x: 2.2 * T, y: 19 * T - ACTOR_H },
+  emberSpawn: { x: 2.2 * T, y: roomY(8) * T - ACTOR_H },
+  frostSpawn: { x: 2.2 * T, y: roomY(19) * T - ACTOR_H },
   innerEmberX: 13.4 * T,
   innerFrostX: 13.4 * T,
   holdEmberX: 14.0 * T,
@@ -17,11 +16,11 @@ export const L04 = {
   exitFrostX: 21.5 * T,
 };
 
-export const LEVEL_04: LevelDocument = {
+export const LEVEL_04: LevelDocument = finishRoom({
   id: "04",
   title: "双闸回廊",
   tile: T,
-  size: { w: 24, h: 20 },
+  size: { w: 24, h: 14 },
   puzzle: "phase",
   spawns: { ember: { ...L04.emberSpawn }, frost: { ...L04.frostSpawn } },
   exits: { ember: R(21, 5.8, 2, 2.2), frost: R(21, 16.6, 2, 2.4) },
@@ -49,7 +48,7 @@ export const LEVEL_04: LevelDocument = {
   ],
   plates: { ember: R(17.4, 7.45, 2.4, 0.5), frost: R(17.4, 18.45, 2.4, 0.5) },
   altar: R(14.2, 16.4, 2.0, 2.2),
-  wispNest: { x: 11.2 * T, y: 7.2 * T },
+  wispNest: { x: 11.2 * T, y: roomY(7.2) * T },
   chargeBudget: 1,
   score: { starTimeMs: 230_000, starDeaths: 5 },
   phaseGates: [
@@ -72,4 +71,4 @@ export const LEVEL_04: LevelDocument = {
       rects: [R(14.6, 13, 1.05, 6)],
     },
   ],
-};
+});

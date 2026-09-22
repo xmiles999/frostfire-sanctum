@@ -1,13 +1,12 @@
-import { tileRect } from "../engine/aabb";
+import { R, roomY, finishRoom } from "./layout";
 import { ACTOR_H, TILE } from "../engine/constants";
 import type { LevelDocument } from "../sim/types";
 
 const T = TILE;
-const R = (tx: number, ty: number, tw: number, th: number) => tileRect(tx, ty, tw, th, T);
 
 export const L02 = {
-  emberSpawn: { x: 2.2 * T, y: 4 * T - ACTOR_H },
-  frostSpawn: { x: 2.2 * T, y: 19 * T - ACTOR_H },
+  emberSpawn: { x: 2.2 * T, y: roomY(4) * T - ACTOR_H },
+  frostSpawn: { x: 2.2 * T, y: roomY(19) * T - ACTOR_H },
   leverX: 8.6 * T,
   waitLeverX: 5.2 * T,
   holdEmberX: 14.4 * T,
@@ -19,11 +18,11 @@ export const L02 = {
   exitFrostX: 21.5 * T,
 };
 
-export const LEVEL_02: LevelDocument = {
+export const LEVEL_02: LevelDocument = finishRoom({
   id: "02",
   title: "潮汐石阶",
   tile: T,
-  size: { w: 24, h: 20 },
+  size: { w: 24, h: 14 },
   puzzle: "tide",
   doorLatchMs: 8000,
   spawns: { ember: { ...L02.emberSpawn }, frost: { ...L02.frostSpawn } },
@@ -56,7 +55,7 @@ export const LEVEL_02: LevelDocument = {
   wispNest: { x: -999, y: -999 },
   chargeBudget: 1,
   score: { starTimeMs: 210_000, starDeaths: 5 },
-  crates: [{ id: "well_crate", x: 3.2 * T, y: 19 * T - 28, w: 28, h: 28, density: 1.2 }],
+  crates: [{ id: "well_crate", x: 3.2 * T, y: roomY(19) * T - 28, w: 28, h: 28, density: 1.2 }],
   levers: [{ id: "tide", rect: R(7.6, 2.5, 2.2, 1.2), kind: "tide" }],
   holdGates: [
     {
@@ -75,4 +74,4 @@ export const LEVEL_02: LevelDocument = {
     deepWater: [{ id: "tide_deep", type: "water_deep", rect: R(6, 15.2, 14, 3.8) }],
     flood: [{ id: "ember_flood", type: "water_deep", rect: R(1, 7.45, 19, 1.2) }],
   },
-};
+});

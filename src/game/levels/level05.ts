@@ -1,13 +1,12 @@
-import { tileRect } from "../engine/aabb";
+import { R, roomY, finishRoom } from "./layout";
 import { ACTOR_H, TILE } from "../engine/constants";
 import type { LevelDocument } from "../sim/types";
 
 const T = TILE;
-const R = (tx: number, ty: number, tw: number, th: number) => tileRect(tx, ty, tw, th, T);
 
 export const L05 = {
-  emberSpawn: { x: 2.2 * T, y: 4 * T - ACTOR_H },
-  frostSpawn: { x: 2.2 * T, y: 19 * T - ACTOR_H },
+  emberSpawn: { x: 2.2 * T, y: roomY(4) * T - ACTOR_H },
+  frostSpawn: { x: 2.2 * T, y: roomY(19) * T - ACTOR_H },
   leverX: 6.8 * T,
   fireWindowX: 9.2 * T,
   frostChamberX: 11.2 * T,
@@ -18,11 +17,11 @@ export const L05 = {
   exitFrostX: 21.5 * T,
 };
 
-export const LEVEL_05: LevelDocument = {
+export const LEVEL_05: LevelDocument = finishRoom({
   id: "05",
   title: "沉钟齿轮",
   tile: T,
-  size: { w: 24, h: 20 },
+  size: { w: 24, h: 14 },
   puzzle: "gear",
   spawns: { ember: { ...L05.emberSpawn }, frost: { ...L05.frostSpawn } },
   exits: { ember: R(21, 5.8, 2, 2.2), frost: R(21, 16.6, 2, 2.4) },
@@ -66,6 +65,7 @@ export const LEVEL_05: LevelDocument = {
     },
   ],
   gear: {
+    cycleMs: 10000,
     windows: [
       {
         id: "fire",
@@ -77,14 +77,14 @@ export const LEVEL_05: LevelDocument = {
         id: "frost_early",
         openAtMs: 1400,
         closeAtMs: 3000,
-        solidsWhenClosed: [R(8.4, 12, 1.1, 7)],
+        solidsWhenClosed: [R(8.4, 8.5, 1.1, 10.5)],
       },
       {
         id: "frost_real",
         openAtMs: 3600,
-        closeAtMs: 200000,
-        solidsWhenClosed: [R(12.2, 12, 1.1, 7)],
+        closeAtMs: 10000,
+        solidsWhenClosed: [R(12.2, 8.5, 1.1, 10.5)],
       },
     ],
   },
-};
+});

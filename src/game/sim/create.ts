@@ -91,5 +91,6 @@ export function createSim(level: LevelDocument): SimState {
     leverInside: {},
     gearArmedMs: null,
     puzzleHint: "",
+    collected: [],
   };
 }

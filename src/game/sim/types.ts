@@ -174,6 +174,15 @@ export interface GearWindow {
 
 export interface GearSpec {
   windows: GearWindow[];
+  cycleMs?: number;
+}
+
+export interface Collectible {
+  id: string;
+  who: ActorId;
+  rect: Rect;
+  /** Large rune: both players must retrieve theirs before the exit mechanism works. */
+  required?: boolean;
 }
 
 export interface LevelDocument {
@@ -202,6 +211,7 @@ export interface LevelDocument {
   holdGates?: HoldGate[];
   gear?: GearSpec;
   doorLatchMs?: number;
+  collectibles?: Collectible[];
 }
 
 export interface SimState {
@@ -239,6 +249,7 @@ export interface SimState {
   leverInside: Record<string, boolean>;
   gearArmedMs: number | null;
   puzzleHint: string;
+  collected: string[];
 }
 
 export interface PairIntent {

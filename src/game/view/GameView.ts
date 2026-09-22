@@ -22,7 +22,7 @@ import { makeCamera, updateCamera, type Camera } from "../engine/camera";
 import { rectsOverlap, type Rect } from "../engine/aabb";
 import { actorRect } from "../engine/physics";
 import type { ActorState, CrateState, Hazard, LeverSpec, SimState } from "../sim/types";
-import { activeHazards, standingOnPlate } from "../sim/world";
+import { activeHazards, gearWindowOpen, holdGateOpen, runesReady } from "../sim/world";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/?$/, "/");
 
@@ -34,8 +34,8 @@ function frameUrls(dir: string, count: number): string[] {
   return Array.from({ length: count }, (_, i) => asset(`${dir}/${String(i).padStart(2, "0")}.png`));
 }
 
-/** On-screen character height in world px. Collision is 34; keep a little cape/hair overshoot. */
-const SPRITE_H = 44;
+/** Hair/cape overshoot above the 34px body; feet always coincide with the collider. */
+const SPRITE_H = 50;
 const WISP_H = 32;
 const PLATE_H = 28;
 const ALTAR_H = 64;
@@ -107,11 +107,12 @@ export class GameView {
   private parent: HTMLElement;
   private deathFx: { x: number; y: number; who: "ember" | "frost"; age: number }[] = [];
   private downedSeen = { ember: false, frost: false };
+  private reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
   constructor(app: Application, parent: HTMLElement) {
     this.app = app;
     this.parent = parent;
-    this.cam = makeCamera(Math.max(parent.clientWidth, 640), Math.max(parent.clientHeight, 360));
+    this.cam = makeCamera(Math.max(parent.clientWidth, 1), Math.max(parent.clientHeight, 1));
   }
 
   static async create(
@@ -123,8 +124,8 @@ export class GameView {
     if (signal?.aborted) throw new DOMException("aborted", "AbortError");
 
     const rect = parent.getBoundingClientRect();
-    const width = Math.max(Math.floor(rect.width) || window.innerWidth || 1280, 640);
-    const height = Math.max(Math.floor(rect.height) || window.innerHeight || 720, 360);
+    const width = Math.max(Math.floor(rect.width), 1);
+    const height = Math.max(Math.floor(rect.height), 1);
 
     const app = new Application();
     await app.init({
@@ -132,6 +133,9 @@ export class GameView {
       background: "#1a140f",
       antialias: true,
       autoDensity: true,
+      // GameRuntime owns RAF and explicitly renders; Pixi's default ticker would draw twice.
+      autoStart: false,
+      sharedTicker: false,
       resolution: Math.min(2, window.devicePixelRatio || 1),
       width,
       height,
@@ -146,6 +150,9 @@ export class GameView {
     void Assets.load(restUrls()).then(() => {
       if (signal?.aborted) return;
       view.hydrate();
+    }).catch((error: unknown) => {
+      // Keep the already-loaded idle art if optional animation frames cannot load.
+      if (!signal?.aborted) console.warn("角色动画载入失败，继续使用静态帧。", error);
     });
     return view;
   }
@@ -170,7 +177,7 @@ export class GameView {
     return t;
   }
 
-  private slab(tex: Texture, r: Rect, extraTop = 28, extraBottom = 8): TilingSprite {
+  private slab(tex: Texture, r: Rect, extraTop = 0, extraBottom = 0): TilingSprite {
     const h = Math.max(r.h + extraTop + extraBottom, 8);
     const t = new TilingSprite({ texture: tex, width: Math.max(r.w, 1), height: h });
     t.x = r.x;
@@ -197,7 +204,7 @@ export class GameView {
   }
 
   private liquidPad(kind: "lava" | "water"): { extraTop: number; extraBottom: number } {
-    return kind === "lava" ? { extraTop: 20, extraBottom: 28 } : { extraTop: 16, extraBottom: 42 };
+    return kind === "lava" ? { extraTop: 0, extraBottom: 0 } : { extraTop: 0, extraBottom: 0 };
   }
 
   private sit(tex: Texture, r: Rect, height: number): Sprite {
@@ -234,7 +241,8 @@ export class GameView {
 
     this.far = new Sprite(this.tex("assets/levels/01/bg-far.jpg"));
     this.mid = new Sprite(this.tex("assets/levels/01/bg-mid.jpg"));
-    this.mid.alpha = 0.52;
+    this.far.alpha = 0.48;
+    this.mid.alpha = 0.18;
     this.ember = new Sprite(this.frames.ember.idle[0]);
     this.frost = new Sprite(this.frames.frost.idle[0]);
     this.wisp = new Sprite(this.tex("assets/fx/wisp.png"));
@@ -282,7 +290,9 @@ export class GameView {
   }
 
   resetWorld(): void {
-    this.props.removeChildren();
+    for (const child of this.props.removeChildren()) {
+      if (child !== this.plateEmber && child !== this.plateFrost && child !== this.altar) child.destroy();
+    }
     this.liquids = [];
     this.doorSprites = [];
     this.deathFx = [];
@@ -302,13 +312,19 @@ export class GameView {
     const doorTex = this.tex("assets/levels/01/door.png");
 
     const worldH = sim.level.size.h * TILE;
+    const edges = new Graphics();
     for (const s of sim.level.solids) {
       const kind = this.solidKind(s, worldH);
       if (kind === "wall") this.props.addChild(this.tile(wall, s));
-      else if (kind === "ceiling") this.props.addChild(this.slab(ceiling, s, 0, 18));
+      else if (kind === "ceiling") this.props.addChild(this.slab(ceiling, s));
       else if (kind === "frost") this.props.addChild(this.slab(roadFrost, s));
       else this.props.addChild(this.slab(roadEmber, s));
+      if (kind !== "ceiling" && kind !== "wall") {
+        edges.rect(s.x, s.y, s.w, 3).fill({ color: 0xc7bf99, alpha: 0.95 });
+        edges.rect(s.x, s.y + s.h - 3, s.w, 3).fill({ color: 0x161d1c, alpha: 0.9 });
+      }
     }
+    this.props.addChild(edges);
     this.liquids = [];
     for (const h of sim.level.hazards) {
       const kind = h.type === "lava_shallow" ? "lava" : h.type === "water_shallow" ? "water" : null;
@@ -340,37 +356,35 @@ export class GameView {
       d.anchor.set(0.5, 1);
       d.x = s.x + s.w / 2;
       d.y = s.y + s.h;
-      d.scale.set(Math.max(s.w * 2.4, 56) / doorTex.width, s.h / doorTex.height);
+      d.scale.set(s.w / doorTex.width, s.h / doorTex.height);
       this.props.addChild(d);
       return d;
     });
     this.props.addChild(this.plateEmber, this.plateFrost, this.altar);
 
-    const roomW = sim.level.size.w;
-    const worldHpx = sim.level.size.h * TILE;
-    for (const t of [0.22, 0.44, 0.66, 0.82]) {
-      const col = this.tile(wall, { x: t * roomW * TILE, y: 3 * TILE, w: 14, h: worldHpx - 4 * TILE });
-      col.alpha = 0.32;
-      this.props.addChild(col);
+    for (const who of ["ember", "frost"] as const) {
+      const r = sim.level.exits[who];
+      const door = this.sit(doorTex, r, r.h);
+      door.width = r.w;
+      door.tint = who === "ember" ? 0xf3ac73 : 0x91cfe0;
+      this.props.addChild(door);
     }
   }
 
   render(sim: SimState, dt: number): void {
     const cssW = this.parent.clientWidth || window.innerWidth || 1280;
     const cssH = this.parent.clientHeight || window.innerHeight || 720;
-    this.cam.w = Math.max(cssW, 640);
-    this.cam.h = Math.max(cssH, 360);
+    this.cam.w = Math.max(cssW, 1);
+    this.cam.h = Math.max(cssH, 1);
     updateCamera(this.cam, sim, dt);
     this.layoutProps(sim);
 
-    this.far.width = this.cam.w;
-    this.far.height = this.cam.h;
-    this.far.x = 0;
-    this.far.y = 0;
-    this.mid.width = this.cam.w;
-    this.mid.height = this.cam.h;
-    this.mid.x = 0;
-    this.mid.y = 0;
+    for (const background of [this.far, this.mid]) {
+      const scale = Math.max(this.cam.w / background.texture.width, this.cam.h / background.texture.height);
+      background.scale.set(scale);
+      background.x = (this.cam.w - background.width) / 2;
+      background.y = (this.cam.h - background.height) / 2;
+    }
 
     this.world.scale.set(this.cam.scale);
     this.world.x = this.cam.ox;
@@ -399,11 +413,12 @@ export class GameView {
       d.alpha = 1 - doorProgress * 0.18;
     }
 
-    this.flowLiquids(dt);
-    this.paintSteam(sim);
-    this.paintMechanisms(sim, doorProgress);
-    this.paintPuzzles(sim);
-    this.paintMarks(sim);
+    const visualSim = this.reducedMotion.matches ? { ...sim, timeMs: 0 } : sim;
+    this.flowLiquids(this.reducedMotion.matches ? 0 : dt);
+    this.paintSteam(visualSim);
+    this.paintMechanisms(visualSim, doorProgress);
+    this.paintPuzzles(visualSim);
+    this.paintMarks(visualSim);
     this.syncDeath(sim, dt);
     this.wisp.visible = sim.wisp.nestX > 0;
     this.pose(this.ember, sim.ember, "ember");
@@ -601,6 +616,10 @@ export class GameView {
           ];
     const holdT = Math.min(1, sim.bothHeldMs / PLATE_HOLD_MS);
     for (const plate of platePairs) {
+      // Keep the full pressure footprint readable even though the central icon is compact.
+      g.roundRect(plate.rect.x, plate.rect.y + plate.rect.h - 5, plate.rect.w, 7, 3);
+      g.fill({ color: plate.active ? plate.color : 0x605c4e, alpha: 1 });
+      g.stroke({ color: plate.color, width: 1.5, alpha: 0.8 });
       const cx = plate.rect.x + plate.rect.w / 2;
       const cy = plate.rect.y + 2;
       const radius = Math.min(34, plate.rect.w * 0.24);
@@ -644,7 +663,7 @@ export class GameView {
       [this.plateEmber, sim.plateEmber],
       [this.plateFrost, sim.plateFrost],
     ] as const) {
-      const plateScale = 44 / Math.max(plate.texture.height, 1);
+      const plateScale = 22 / Math.max(plate.texture.height, 1);
       plate.scale.set(plateScale, plateScale * (active ? 0.72 : 1));
       plate.y += active ? 6 : 0;
     }
@@ -653,6 +672,18 @@ export class GameView {
   private paintMarks(sim: SimState): void {
     const g = this.overlay;
     g.clear();
+    for (const gem of sim.level.collectibles ?? []) {
+      if (sim.collected.includes(gem.id)) continue;
+      const cx = gem.rect.x + gem.rect.w / 2;
+      const cy = gem.rect.y + gem.rect.h / 2;
+      const color = gem.who === "ember" ? 0xffb078 : 0x9ce6ff;
+      if (gem.required) {
+        g.roundRect(cx - 17, cy - 19, 34, 38, 5).fill({ color: 0x131c22, alpha: 0.95 });
+        g.stroke({ color, width: 2, alpha: 0.9 });
+      }
+      this.paintDiamond(g, cx, cy, gem.required ? 12 : 9, color, 1);
+      g.moveTo(cx, cy - 7).lineTo(cx - 4, cy).lineTo(cx, cy + 6).stroke({ color: 0xffffff, alpha: 0.8, width: 1.5 });
+    }
     const pe = sim.level.plates.ember;
     const pf = sim.level.plates.frost;
     if (sim.bothHeldMs > 0 && !sim.doorOpen) {
@@ -678,11 +709,22 @@ export class GameView {
     }
 
     g.roundRect(sim.level.exits.ember.x, sim.level.exits.ember.y, sim.level.exits.ember.w, sim.level.exits.ember.h, 8);
-    g.fill({ color: 0xff6a1a, alpha: 0.22 });
+    g.fill({ color: 0xff6a1a, alpha: sim.doorOpen ? 0.28 : 0.08 });
     g.stroke({ color: 0xffb070, width: 3, alpha: 0.95 });
     g.roundRect(sim.level.exits.frost.x, sim.level.exits.frost.y, sim.level.exits.frost.w, sim.level.exits.frost.h, 8);
-    g.fill({ color: 0x3aa0c8, alpha: 0.22 });
+    g.fill({ color: 0x3aa0c8, alpha: sim.doorOpen ? 0.28 : 0.08 });
     g.stroke({ color: 0x9be7ff, width: 3, alpha: 0.95 });
+    for (const who of ["ember", "frost"] as const) {
+      const r = sim.level.exits[who];
+      const cx = r.x + r.w / 2;
+      const color = who === "ember" ? 0xffb078 : 0x9ce6ff;
+      this.paintDiamond(g, cx, r.y - 14, 9, runesReady(sim) ? color : 0x77776e, 1);
+      if (who === "ember") this.paintChevron(g, cx, r.y + r.h / 2, 12, color, 0.9);
+      else {
+        g.moveTo(cx - 10, r.y + r.h / 2).lineTo(cx + 10, r.y + r.h / 2);
+        g.moveTo(cx, r.y + r.h / 2 - 12).lineTo(cx, r.y + r.h / 2 + 12).stroke({ color, width: 3 });
+      }
+    }
 
     this.paintDeathFx(g);
     for (const a of [sim.ember, sim.frost]) {
@@ -1117,9 +1159,7 @@ export class GameView {
 
   private paintHoldGates(sim: SimState, g: Graphics): void {
     for (const gate of sim.level.holdGates ?? []) {
-      const held =
-        (gate.who !== "frost" && standingOnPlate(sim.ember, gate.plate)) ||
-        (gate.who !== "ember" && standingOnPlate(sim.frost, gate.plate));
+      const held = holdGateOpen(sim, gate);
       const color = gate.who === "frost" ? 0x8edfff : 0xffa45f;
       g.roundRect(gate.plate.x - 4, gate.plate.y - 6, gate.plate.w + 8, gate.plate.h + 10, 6);
       g.fill({ color: 0x2c261e, alpha: 0.8 });
@@ -1147,7 +1187,6 @@ export class GameView {
   private paintGearMachine(sim: SimState, g: Graphics): void {
     const spec = sim.level.gear;
     if (!spec) return;
-    const t = sim.gearArmedMs;
     const lever = sim.level.levers?.find((l) => l.kind === "gear");
     const lx = lever ? lever.rect.x + lever.rect.w : 0;
     const ly = lever ? lever.rect.y + lever.rect.h / 2 : 0;
@@ -1159,7 +1198,7 @@ export class GameView {
       g.fill({ color: 0x3a2a18, alpha: ages[i] ?? 0.4 });
     }
     for (const win of spec.windows) {
-      const open = t !== null && t >= win.openAtMs && t < win.closeAtMs;
+      const open = gearWindowOpen(sim, win);
       const fake = win.id.includes("early") || win.id.includes("fake");
       const fire = win.id.includes("fire");
       const color = fire ? 0xffa45f : fake ? 0x6a8890 : 0x8edfff;

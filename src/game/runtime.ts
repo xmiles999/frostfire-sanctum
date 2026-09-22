@@ -10,6 +10,7 @@ import { GameView } from "./view/GameView";
 import { recordClear } from "./systems/save";
 import { officialPolicy } from "./systems/replay";
 import { EMPTY_INTENT } from "./sim/types";
+import { roomGuidance, type RoomGuidance } from "./sim/guidance";
 
 export interface HudModel {
   timeMs: number;
@@ -28,6 +29,8 @@ export interface HudModel {
   puzzleHint: string;
   levelId: string;
   restartHeldMs: number;
+  gems: { ember: number; frost: number; total: number; collected: number; runes: number };
+  guidance: RoomGuidance;
 }
 
 export class GameRuntime {
@@ -41,6 +44,8 @@ export class GameRuntime {
   demo = false;
   onHud?: (hud: HudModel) => void;
   private recordedClear = false;
+  private hudElapsed = 0;
+  private beforePause: SimState["status"] = "playing";
 
   load(id: string): void {
     this.level = levelById(id);
@@ -57,12 +62,14 @@ export class GameRuntime {
 
   pause(): void {
     if (this.sim.status === "playing" || this.sim.status === "rescue_window") {
+      this.beforePause = this.sim.status;
       this.sim.status = "paused";
+      this.input.clear();
     }
   }
 
   resume(): void {
-    if (this.sim.status === "paused") this.sim.status = "playing";
+    if (this.sim.status === "paused") this.sim.status = this.beforePause;
   }
 
   attach(view: GameView): void {
@@ -110,6 +117,11 @@ export class GameRuntime {
       recordClear(this.sim.level.id, starsFor(this.sim), this.sim.timeMs, this.sim.deaths);
     }
     this.view?.render(this.sim, dt);
+    // Physics stays at 120 Hz; DOM counters do not need a React render every frame.
+    this.hudElapsed += dt;
+    if (this.hudElapsed < 0.1) return;
+    this.hudElapsed = 0;
+    const collectibles = this.sim.level.collectibles ?? [];
     this.onHud?.({
       timeMs: this.sim.timeMs,
       deaths: this.sim.deaths,
@@ -127,6 +139,14 @@ export class GameRuntime {
       puzzleHint: this.sim.puzzleHint,
       levelId: this.sim.level.id,
       restartHeldMs: this.input.restartHeldMs,
+      guidance: roomGuidance(this.sim),
+      gems: {
+        ember: collectibles.filter(g => g.who === "ember" && this.sim.collected.includes(g.id)).length,
+        frost: collectibles.filter(g => g.who === "frost" && this.sim.collected.includes(g.id)).length,
+        total: collectibles.length,
+        collected: this.sim.collected.length,
+        runes: collectibles.filter(g => g.required && this.sim.collected.includes(g.id)).length,
+      },
     });
   }
 }

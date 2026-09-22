@@ -1,5 +1,5 @@
 import { rectsOverlap, type Rect } from "../engine/aabb";
-import type { ActorState, CrateState, Hazard, HoldGate, SimState } from "./types";
+import type { ActorState, CrateState, GearWindow, Hazard, HoldGate, SimState } from "./types";
 
 export function standingOnPlate(
   actor: Pick<ActorState, "x" | "y" | "w" | "h" | "downed" | "onGround">,
@@ -17,14 +17,27 @@ export function standingOnPlate(
   );
 }
 
-function holdGateOpen(sim: SimState, gate: HoldGate): boolean {
+export function holdGateOpen(sim: SimState, gate: HoldGate): boolean {
   if (gate.who === "ember" || gate.who === "any") {
     if (standingOnPlate(sim.ember, gate.plate)) return true;
   }
   if (gate.who === "frost" || gate.who === "any") {
     if (standingOnPlate(sim.frost, gate.plate)) return true;
   }
-  return false;
+  return gateOccupied(sim, gate.rects);
+}
+
+export function gateOccupied(sim: SimState, rects: Rect[]): boolean {
+  return rects.some(r => [sim.ember, sim.frost, ...sim.crates].some(a => rectsOverlap(a, r)));
+}
+
+export function gearWindowOpen(sim: SimState, window: GearWindow): boolean {
+  return (sim.gearArmedMs !== null && sim.gearArmedMs >= window.openAtMs && sim.gearArmedMs < window.closeAtMs)
+    || gateOccupied(sim, window.solidsWhenClosed);
+}
+
+export function runesReady(sim: SimState): boolean {
+  return (sim.level.collectibles ?? []).every(g => !g.required || sim.collected.includes(g.id));
 }
 
 export function crateRect(c: CrateState): Rect {
@@ -63,8 +76,7 @@ export function solidsNow(sim: SimState): Rect[] {
   }
   if (sim.level.gear && sim.gearArmedMs !== null) {
     for (const win of sim.level.gear.windows) {
-      const t = sim.gearArmedMs;
-      const open = t >= win.openAtMs && t < win.closeAtMs;
+      const open = gearWindowOpen(sim, win);
       if (!open) solids.push(...win.solidsWhenClosed);
     }
   } else if (sim.level.gear) {

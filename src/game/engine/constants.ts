@@ -2,7 +2,7 @@ export const TILE = 48;
 export const PHYS_DT = 1 / 120;
 export const MAX_PHYS_STEPS = 8;
 export const GRAVITY = 2400;
-/** Chosen so hang height is ~3.2 tiles (design doc 720px/s was inconsistent with 2400 gravity). */
+/** Full jump rises about 108px / 2.25 tiles before fixed-step rounding. */
 export const JUMP_SPEED = 720;
 /** Releasing jump while rising trims the arc without making taps feel abrupt. */
 export const JUMP_RELEASE_MULTIPLIER = 0.52;
@@ -11,7 +11,7 @@ export const FROST_SPEED = 350;
 export const COYOTE_MS = 80;
 export const JUMP_BUFFER_MS = 100;
 export const LAND_RECOVERY_MS = 120;
-export const ACTOR_W = 16;
+export const ACTOR_W = 22;
 export const ACTOR_H = 34;
 export const HURT_MS = 420;
 export const MAX_SEPARATION = 28 * TILE;

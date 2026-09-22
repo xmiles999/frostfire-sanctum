@@ -1,13 +1,12 @@
-import { tileRect } from "../engine/aabb";
+import { R, roomY, finishRoom } from "./layout";
 import { ACTOR_H, TILE } from "../engine/constants";
 import type { LevelDocument } from "../sim/types";
 
 const T = TILE;
-const R = (tx: number, ty: number, tw: number, th: number) => tileRect(tx, ty, tw, th, T);
 
 export const L03 = {
-  emberSpawn: { x: 2.2 * T, y: 8 * T - ACTOR_H },
-  frostSpawn: { x: 2.2 * T, y: 19 * T - ACTOR_H },
+  emberSpawn: { x: 2.2 * T, y: roomY(8) * T - ACTOR_H },
+  frostSpawn: { x: 2.2 * T, y: roomY(19) * T - ACTOR_H },
   igniteX: 10.2 * T,
   holdEmberX: 13.0 * T,
   gapX: 8 * T,
@@ -17,11 +16,11 @@ export const L03 = {
   exitFrostX: 21.5 * T,
 };
 
-export const LEVEL_03: LevelDocument = {
+export const LEVEL_03: LevelDocument = finishRoom({
   id: "03",
   title: "焦木栈道",
   tile: T,
-  size: { w: 24, h: 20 },
+  size: { w: 24, h: 14 },
   puzzle: "burn",
   spawns: { ember: { ...L03.emberSpawn }, frost: { ...L03.frostSpawn } },
   exits: { ember: R(21, 5.8, 2, 2.2), frost: R(21, 16.6, 2, 2.4) },
@@ -63,4 +62,4 @@ export const LEVEL_03: LevelDocument = {
     { id: "wood_mid", rect: R(8.4, 19, 5, 1), oily: true, ashRect: R(8.4, 19, 5, 1) },
     { id: "wood_3", rect: R(13.4, 19, 2.2, 1), oily: false, ashRect: null },
   ],
-};
+});
