@@ -97,7 +97,8 @@ function shouldJump(sim: SimState, actor: ActorState, targetX: number): boolean 
   if (Math.abs(targetX - cx) < 18) return false;
   const dir = (targetX > cx ? 1 : -1) as 1 | -1;
   const footY = actor.y + actor.h;
-  const look = cx + dir * 44;
+  // Slower running needs a takeoff closer to the edge, especially below low ceilings.
+  const look = cx + dir * 20;
   if (hazardAhead(sim, actor, dir, targetX)) return true;
   const solids = solidsNow(sim);
 

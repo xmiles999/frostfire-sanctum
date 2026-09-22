@@ -7,6 +7,35 @@ import { actorPose } from "../src/game/view/actorPose";
 import { blankLevel, idle, steps } from "./helpers";
 
 describe("movement control", () => {
+  it.each([
+    ["ember", "right", 300],
+    ["ember", "left", 300],
+    ["frost", "right", 290],
+    ["frost", "left", 290],
+  ] as const)("caps %s running %s at the calmer speed of %i px/s", (who, direction, speed) => {
+    const sim = createSim(blankLevel());
+    const actor = sim[who];
+    actor.x = 10 * TILE;
+    const start = actor.x;
+    const input = idle();
+    input[who][direction] = true;
+    steps(sim, 120, input);
+    expect(Math.abs(actor.vx)).toBe(speed);
+    expect(Math.abs(actor.x - start)).toBeGreaterThan(speed - 12);
+    expect(Math.abs(actor.x - start)).toBeLessThanOrEqual(speed);
+
+    input[who].down = true;
+    steps(sim, 12, input);
+    expect(Math.abs(actor.vx)).toBe(speed / 2);
+    input[who].down = false;
+    steps(sim, 12, input);
+    expect(Math.abs(actor.vx)).toBe(speed);
+    const stopX = actor.x;
+    steps(sim, 6);
+    expect(actor.vx).toBe(0);
+    expect(Math.abs(actor.x - stopX)).toBeLessThan(4);
+  });
+
   it("accelerates instead of snapping to full speed and brakes within eight pixels", () => {
     const sim = createSim(blankLevel());
     const right = idle();
