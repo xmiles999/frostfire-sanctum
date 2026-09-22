@@ -76,13 +76,13 @@ export const LEVEL_05: LevelDocument = finishRoom({
       {
         id: "frost_early",
         openAtMs: 1400,
-        closeAtMs: 3000,
+        closeAtMs: 2800,
         solidsWhenClosed: [R(8.4, 8.5, 1.1, 10.5)],
       },
       {
         id: "frost_real",
         openAtMs: 3600,
-        closeAtMs: 10000,
+        closeAtMs: 6400,
         solidsWhenClosed: [R(12.2, 8.5, 1.1, 10.5)],
       },
     ],

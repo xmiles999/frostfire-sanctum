@@ -7,6 +7,7 @@ import {
   Sprite,
   Texture,
   TilingSprite,
+  Text,
 } from "pixi.js";
 import {
   BRIDGE_BURN_MS,
@@ -23,6 +24,8 @@ import { rectsOverlap, type Rect } from "../engine/aabb";
 import { actorRect } from "../engine/physics";
 import type { ActorState, CrateState, Hazard, LeverSpec, SimState } from "../sim/types";
 import { activeHazards, gearWindowOpen, holdGateOpen, runesReady } from "../sim/world";
+import { actorPose } from "./actorPose";
+import { STEAM_STYLE, steamParticles } from "./hazardVisuals";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/?$/, "/");
 
@@ -39,7 +42,6 @@ const SPRITE_H = 50;
 const WISP_H = 32;
 const PLATE_H = 28;
 const ALTAR_H = 64;
-const HURT_FPS = 12;
 
 function criticalUrls(): string[] {
   return [
@@ -107,6 +109,9 @@ export class GameView {
   private parent: HTMLElement;
   private deathFx: { x: number; y: number; who: "ember" | "frost"; age: number }[] = [];
   private downedSeen = { ember: false, frost: false };
+  private collectedSeen = new Set<string>();
+  private pickupFx: { x: number; y: number; color: number; at: number }[] = [];
+  private hazardLabels = new Map<string, Text>();
   private reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
   constructor(app: Application, parent: HTMLElement) {
@@ -297,6 +302,9 @@ export class GameView {
     this.doorSprites = [];
     this.deathFx = [];
     this.downedSeen = { ember: false, frost: false };
+    this.collectedSeen.clear();
+    this.pickupFx = [];
+    this.hazardLabels.clear();
   }
 
   private layoutProps(sim: SimState): void {
@@ -369,6 +377,18 @@ export class GameView {
       door.tint = who === "ember" ? 0xf3ac73 : 0x91cfe0;
       this.props.addChild(door);
     }
+    for (const hazard of sim.level.hazards) {
+      if (hazard.type !== "ice_mist" && hazard.type !== "steam_hot") continue;
+      const label = new Text({
+        text: hazard.type === "ice_mist" ? "寒气 · 烬禁入" : STEAM_STYLE[sim.steamPhase].label,
+        style: { fontFamily: "sans-serif", fontSize: 11, fontWeight: "600", fill: hazard.type === "steam_hot" ? STEAM_STYLE[sim.steamPhase].color : 0xe3f1f5, stroke: { color: 0x122027, width: 3 } },
+      });
+      label.anchor.set(0.5, 0);
+      label.x = hazard.rect.x + hazard.rect.w / 2;
+      label.y = hazard.type === "ice_mist" ? hazard.rect.y + 7 : hazard.rect.y + hazard.rect.h - 34;
+      this.hazardLabels.set(hazard.id, label);
+      this.props.addChild(label);
+    }
   }
 
   render(sim: SimState, dt: number): void {
@@ -378,6 +398,14 @@ export class GameView {
     this.cam.h = Math.max(cssH, 1);
     updateCamera(this.cam, sim, dt);
     this.layoutProps(sim);
+    for (const hazard of sim.level.hazards) {
+      if (hazard.type !== "steam_hot") continue;
+      const label = this.hazardLabels.get(hazard.id);
+      if (label && label.text !== STEAM_STYLE[sim.steamPhase].label) {
+        label.text = STEAM_STYLE[sim.steamPhase].label;
+        label.style.fill = STEAM_STYLE[sim.steamPhase].color;
+      }
+    }
 
     for (const background of [this.far, this.mid]) {
       const scale = Math.max(this.cam.w / background.texture.width, this.cam.h / background.texture.height);
@@ -419,6 +447,7 @@ export class GameView {
     this.paintMechanisms(visualSim, doorProgress);
     this.paintPuzzles(visualSim);
     this.paintMarks(visualSim);
+    this.paintPickups(sim);
     this.syncDeath(sim, dt);
     this.wisp.visible = sim.wisp.nestX > 0;
     this.pose(this.ember, sim.ember, "ember");
@@ -435,31 +464,37 @@ export class GameView {
   private pose(sprite: Sprite, actor: ActorState, who: "ember" | "frost"): void {
     const set = this.frames[who];
     const dying = actor.anim === "hurt" || actor.anim === "downed";
-    const key = dying
-      ? actor.anim
-      : actor.anim === "fall" || actor.anim === "land"
-        ? actor.anim === "land"
-          ? "idle"
-          : "jump"
-        : actor.anim === "interact"
-          ? "idle"
-          : actor.anim;
-    const frames = set[key] ?? set.idle;
-    const fps = actor.anim === "walk" ? 14 : actor.anim === "idle" ? 8 : actor.anim === "hurt" ? HURT_FPS : 10;
-    const idx = dying
-      ? Math.min(frames.length - 1, Math.floor(actor.animTime * fps))
-      : Math.floor(actor.animTime * fps) % frames.length;
+    const pose = actorPose(actor, this.reducedMotion.matches);
+    const frames = set[pose.atlas] ?? set.idle;
+    const idx = pose.loop ? pose.frame % frames.length : Math.min(frames.length - 1, pose.frame);
     sprite.texture = frames[idx]!;
     sprite.x = actor.x + actor.w / 2;
     sprite.y = actor.y + actor.h;
     const s = SPRITE_H / Math.max(sprite.texture.height, 1);
-    const landT = Math.max(0, Math.min(1, actor.landMs / 120));
-    const deathSquash = dying ? Math.min(0.16, actor.animTime * 0.35) : 0;
-    const squash = dying ? deathSquash : actor.onGround ? landT * 0.1 : 0;
-    const stretch = !dying && !actor.onGround && actor.vy < -180 ? 0.035 : 0;
-    sprite.scale.set(s * actor.facing * (1 + squash - stretch), s * (1 - squash + stretch));
-    sprite.rotation = dying || actor.onGround ? 0 : Math.max(-0.08, Math.min(0.08, actor.vx / 4200));
+    sprite.scale.set(s * actor.facing * pose.scaleX, s * pose.scaleY);
+    sprite.rotation = pose.rotation;
     sprite.alpha = actor.invulnMs > 0 ? 0.7 : dying ? Math.max(0.78, 1 - actor.animTime * 0.12) : 1;
+  }
+
+  private paintPickups(sim: SimState): void {
+    for (const gem of sim.level.collectibles ?? []) {
+      if (!sim.collected.includes(gem.id) || this.collectedSeen.has(gem.id)) continue;
+      this.collectedSeen.add(gem.id);
+      if (!this.reducedMotion.matches) this.pickupFx.push({
+        x: gem.rect.x + gem.rect.w / 2, y: gem.rect.y + gem.rect.h / 2,
+        color: gem.who === "ember" ? 0xffb078 : 0x9ce6ff, at: sim.timeMs,
+      });
+    }
+    this.pickupFx = this.pickupFx.filter(fx => sim.timeMs - fx.at < 450);
+    if (this.reducedMotion.matches) return;
+    for (const fx of this.pickupFx) {
+      const t = (sim.timeMs - fx.at) / 450;
+      this.overlay.circle(fx.x, fx.y, 10 + t * 22).stroke({ color: fx.color, width: 2, alpha: (1 - t) * 0.7 });
+      for (let i = 0; i < 4; i++) {
+        const angle = i * Math.PI / 2;
+        this.paintDiamond(this.overlay, fx.x + Math.cos(angle) * (12 + t * 20), fx.y + Math.sin(angle) * (12 + t * 20), 3, fx.color, 1 - t);
+      }
+    }
   }
 
   private syncDeath(sim: SimState, dt: number): void {
@@ -514,50 +549,26 @@ export class GameView {
     g.clear();
     for (const h of sim.level.hazards) {
       if (h.type !== "steam_hot") continue;
-      const phase = sim.steamPhase;
-      const bottom = h.rect.y + h.rect.h - 10;
-      const safe = phase === "safe";
-      const telegraph = phase === "telegraph";
-      const cloudCount = safe ? 4 : telegraph ? 9 : 24;
-      const travel = safe ? 58 : telegraph ? 88 : h.rect.h + 70;
-      const speed = safe ? 0.025 : telegraph ? 0.07 : 0.16;
-
-      if (!safe) {
-        const coreAlpha = telegraph ? 0.15 : 0.34;
-        g.roundRect(h.rect.x + h.rect.w * 0.18, h.rect.y, h.rect.w * 0.64, h.rect.h, 22);
-        g.fill({ color: 0xf8fbff, alpha: coreAlpha });
-      }
-
-      for (let i = 0; i < cloudCount; i++) {
-        const phaseOffset = i * (travel / cloudCount);
-        const rise = (sim.timeMs * speed + phaseOffset) % travel;
-        const normalized = rise / travel;
-        const sway = Math.sin(sim.timeMs * 0.006 + i * 1.73) * (8 + normalized * 13);
-        const lane = ((i * 37) % Math.max(20, h.rect.w - 20)) + 10;
-        const px = h.rect.x + lane + sway;
-        const py = bottom - rise;
-        const radius = (safe ? 4 : telegraph ? 5 : 8) + (i % 4) * 2 + normalized * 8;
-        const alpha = safe
-          ? 0.08 * (1 - normalized)
-          : telegraph
-            ? 0.24 * (1 - normalized * 0.65)
-            : 0.48 * (1 - normalized * 0.52);
-        g.circle(px, py, radius);
-        g.fill({ color: i % 3 === 0 ? 0xd8e8ee : 0xf7f4ea, alpha });
-      }
-
-      if (telegraph) {
-        const pulse = 0.45 + Math.sin(sim.timeMs * 0.045) * 0.18;
-        for (let i = 0; i < 5; i++) {
-          const px = h.rect.x + 10 + ((i * 23 + sim.timeMs * 0.09) % (h.rect.w - 20));
-          const py = bottom - 4 - ((sim.timeMs * 0.08 + i * 9) % 28);
-          g.circle(px, py, 2 + (i % 2));
-          g.fill({ color: 0xffffff, alpha: pulse });
+      const r = h.rect;
+      const style = STEAM_STYLE[sim.steamPhase];
+      const active = sim.steamPhase === "lethal";
+      // Upright limit marks show the full collision span; cool vents have no floating cloud.
+      for (const x of [r.x + 1, r.x + r.w - 1]) {
+        for (let y = r.y + 1; y < r.y + r.h - 2; y += 16) {
+          g.moveTo(x, y).lineTo(x, Math.min(y + (active ? 12 : 5), r.y + r.h - 1))
+            .stroke({ color: style.color, alpha: active ? 0.65 : 0.25, width: 1.5 });
         }
-      } else if (phase === "lethal") {
-        const blastAlpha = 0.2 + Math.sin(sim.timeMs * 0.022) * 0.05;
-        g.roundRect(h.rect.x + h.rect.w * 0.31, bottom - h.rect.h, h.rect.w * 0.38, h.rect.h, 18);
-        g.fill({ color: 0xffffff, alpha: blastAlpha });
+      }
+      if (active) {
+        g.rect(r.x + 2, r.y + 2, r.w - 4, r.h - 4).fill({ color: style.color, alpha: 0.055 });
+        for (let i = 0; i < 3; i++) {
+          const x = r.x + r.w * (0.2 + i * 0.3);
+          g.moveTo(x, r.y + r.h - 10).lineTo(x, r.y + 8)
+            .stroke({ color: 0xffefd7, alpha: 0.17, width: 3 });
+        }
+      }
+      for (const p of steamParticles(r, sim.steamPhase, sim.timeMs)) {
+        g.circle(p.x, p.y, p.radius).fill({ color: 0xf8eee0, alpha: p.alpha });
       }
     }
   }
@@ -581,14 +592,9 @@ export class GameView {
       if (h.type !== "steam_hot") continue;
       const telegraph = sim.steamPhase === "telegraph";
       const lethal = sim.steamPhase === "lethal";
-      const shake = telegraph
-        ? Math.sin(sim.timeMs * 0.12) * 4
-        : lethal
-          ? Math.sin(sim.timeMs * 0.045) * 1.2
-          : 0;
-      const cx = h.rect.x + h.rect.w / 2 + shake;
-      const y = h.rect.y + h.rect.h - 13;
-      const lidW = h.rect.w + 26;
+      const cx = h.rect.x + h.rect.w / 2;
+      const y = h.rect.y + h.rect.h - 8;
+      const lidW = h.rect.w;
       const lidX = cx - lidW / 2;
       const seamAlpha = telegraph ? 0.75 + Math.sin(sim.timeMs * 0.05) * 0.2 : lethal ? 0.9 : 0.32;
 
@@ -604,6 +610,11 @@ export class GameView {
         g.circle(bx, y + 7, 3.5);
         g.fill({ color: 0x191b1d, alpha: 1 });
         g.stroke({ color: 0xb0a89c, width: 1, alpha: 0.8 });
+      }
+      // Three distinct bars double as a non-color-only pressure/state indicator.
+      const bars = lethal ? 3 : telegraph ? 2 : 1;
+      for (let i = 0; i < 3; i++) {
+        g.rect(cx - 13 + i * 10, y - 7, 6, 4).fill({ color: STEAM_STYLE[sim.steamPhase].color, alpha: i < bars ? 0.95 : 0.18 });
       }
     }
 
@@ -697,14 +708,25 @@ export class GameView {
 
     for (const h of sim.level.hazards) {
       if (h.type !== "ice_mist") continue;
-      const pulse = 0.14 + Math.sin(sim.timeMs * 0.005) * 0.05;
-      g.roundRect(h.rect.x, h.rect.y, h.rect.w, h.rect.h, 12);
-      g.fill({ color: 0xc8e7f4, alpha: pulse });
-      for (let i = 0; i < 6; i++) {
-        const px = h.rect.x + 8 + ((i * 41 + sim.timeMs * 0.03) % Math.max(12, h.rect.w - 16));
-        const py = h.rect.y + 10 + ((sim.timeMs * 0.04 + i * 17) % Math.max(12, h.rect.h - 20));
-        g.circle(px, py, 3 + (i % 3));
-        g.fill({ color: 0xeef8ff, alpha: 0.18 });
+      const r = h.rect;
+      g.rect(r.x, r.y, r.w, r.h).fill({ color: 0x6bbed8, alpha: 0.055 });
+      // Frost lattice, not white vapor: the entire outlined region remains dangerous to Ember.
+      for (const x of [r.x + 1, r.x + r.w - 1]) {
+        g.moveTo(x, r.y + 1).lineTo(x, r.y + r.h - 1).stroke({ color: 0x98ddf0, alpha: 0.5, width: 1.5 });
+        for (let y = r.y + 6; y < r.y + r.h - 5; y += 18) {
+          g.moveTo(x, y).lineTo(x + (x < r.x + r.w / 2 ? 5 : -5), y + 5).stroke({ color: 0x98ddf0, width: 1, alpha: 0.6 });
+        }
+      }
+      g.moveTo(r.x + 1, r.y + 1).lineTo(r.x + r.w - 1, r.y + 1)
+        .moveTo(r.x + 1, r.y + r.h - 1).lineTo(r.x + r.w - 1, r.y + r.h - 1)
+        .stroke({ color: 0x98ddf0, width: 1, alpha: 0.3 });
+      const cx = r.x + r.w / 2;
+      const cy = r.y + r.h - 14;
+      for (let i = 0; i < 3; i++) {
+        const angle = i * Math.PI / 3;
+        g.moveTo(cx - Math.cos(angle) * 8, cy - Math.sin(angle) * 8)
+          .lineTo(cx + Math.cos(angle) * 8, cy + Math.sin(angle) * 8)
+          .stroke({ color: 0xbcf0ff, width: 2, alpha: 0.8 });
       }
     }
 
@@ -728,9 +750,9 @@ export class GameView {
 
     this.paintDeathFx(g);
     for (const a of [sim.ember, sim.frost]) {
-      if (a.landMs > 0) {
+      if (a.landMs > 0 && !this.reducedMotion.matches) {
         const t = 1 - Math.max(0, Math.min(1, a.landMs / 120));
-        const radius = 8 + t * 24;
+        const radius = 8 + t * 24 * a.landImpact;
         g.ellipse(a.x + a.w / 2, a.y + a.h - 2, radius, 5 + t * 3);
         g.stroke({
           color: a.id === "ember" ? 0xf0b47a : 0xa9ddec,
@@ -947,6 +969,26 @@ export class GameView {
 
   private paintPuzzles(sim: SimState): void {
     const g = this.mechanismFx;
+    for (const spec of sim.level.fragilePlatforms ?? []) {
+      const state = sim.fragilePlatforms.find(p => p.id === spec.id)!;
+      const r = spec.rect;
+      if (state.phase === "gone") {
+        // A dotted outline remains visible so the recovery location is predictable.
+        for (let x = r.x; x < r.x + r.w; x += 14) {
+          g.rect(x, r.y, Math.min(7, r.x + r.w - x), 2).fill({ color: 0xe4c38b, alpha: 0.45 });
+        }
+        const progress = 1 - state.remainingMs / spec.respawnMs;
+        g.rect(r.x, r.y + 5, r.w * progress, 3).fill({ color: 0xe4c38b, alpha: 0.7 });
+        continue;
+      }
+      g.roundRect(r.x, r.y, r.w, r.h, 3).fill({ color: 0x685744 });
+      g.stroke({ color: 0xd8b17b, width: 2 });
+      for (let x = r.x + 12; x < r.x + r.w - 5; x += 22) {
+        g.moveTo(x, r.y).lineTo(x - 4, r.y + 6).lineTo(x + 3, r.y + r.h).stroke({ color: 0x201912, width: 2 });
+      }
+      const remaining = state.phase === "cracking" ? state.remainingMs / spec.crumbleMs : 1;
+      g.rect(r.x, r.y - 5, r.w * remaining, 3).fill({ color: state.phase === "cracking" ? 0xffb86c : 0xe4c38b });
+    }
     for (const ice of sim.level.tide?.ice ?? []) {
       g.roundRect(ice.x, ice.y - 4, ice.w, ice.h + 6, 4);
       g.fill({ color: 0xb9e7ff, alpha: 0.28 });

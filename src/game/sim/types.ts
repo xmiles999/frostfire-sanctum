@@ -5,6 +5,8 @@ export type ActorId = "ember" | "frost";
 export type ActorAnim =
   | "idle"
   | "walk"
+  | "brake"
+  | "push"
   | "jump"
   | "fall"
   | "land"
@@ -64,6 +66,10 @@ export interface ActorState {
   jumpBufferMs: number;
   jumpWasHeld: boolean;
   landMs: number;
+  landImpact: number;
+  moveDir: -1 | 0 | 1;
+  pushing: boolean;
+  interactMs: number;
   downed: boolean;
   invulnMs: number;
   anim: ActorAnim;
@@ -185,6 +191,19 @@ export interface Collectible {
   required?: boolean;
 }
 
+export interface FragilePlatform {
+  id: string;
+  rect: Rect;
+  crumbleMs: number;
+  respawnMs: number;
+}
+
+export interface FragileState {
+  id: string;
+  phase: "stable" | "cracking" | "gone";
+  remainingMs: number;
+}
+
 export interface LevelDocument {
   id: string;
   title: string;
@@ -212,6 +231,7 @@ export interface LevelDocument {
   gear?: GearSpec;
   doorLatchMs?: number;
   collectibles?: Collectible[];
+  fragilePlatforms?: FragilePlatform[];
 }
 
 export interface SimState {
@@ -246,10 +266,13 @@ export interface SimState {
   phaseLockMs: number;
   extraHeld: Record<string, boolean>;
   extraHeldMs: Record<string, number>;
+  phasePlateLatched: Record<string, boolean>;
   leverInside: Record<string, boolean>;
   gearArmedMs: number | null;
   puzzleHint: string;
   collected: string[];
+  fragilePlatforms: FragileState[];
+  feedback: { text: string; remainingMs: number } | null;
 }
 
 export interface PairIntent {

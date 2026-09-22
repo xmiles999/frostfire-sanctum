@@ -14,10 +14,11 @@ const seconds = (ms: number) => `${(Math.max(0, ms) / 1000).toFixed(1)}s`;
 /** Read-only presentation derived from the same simulation clock as the mechanisms. */
 export function roomGuidance(sim: SimState): RoomGuidance {
   const steam = steamAt(sim.timeMs);
+  const hasSteam = sim.level.hazards.some(h => h.type === "steam_hot");
   const result: RoomGuidance = {
     objective: "烬踩接应板，朔通过后两人去终点压板",
-    mechanism: `蒸汽${steam.phase === "safe" ? "安全窗" : steam.phase === "telegraph" ? "即将喷发" : "喷发中"} · ${seconds(steam.remainMs)}`,
-    detail: steam.phase === "safe" ? "留足穿越时间，安全窗结束前离开" : "朔在蒸汽区外等待",
+    mechanism: hasSteam ? `蒸汽${steam.phase === "safe" ? "安全窗" : steam.phase === "telegraph" ? "即将喷发" : "喷发中"} · ${seconds(steam.remainMs)}` : "协作出口 · 等待双压板",
+    detail: hasSteam ? steam.phase === "safe" ? "留足穿越时间，安全窗结束前离开" : "朔在蒸汽区外等待" : "两人同时踩终点压板 0.8s",
   };
   const missing = (sim.level.collectibles ?? []).filter(g => g.required && !sim.collected.includes(g.id));
   if (missing.length) result.objective = `${missing.map(g => g.who === "ember" ? "烬" : "朔").join("、")}攀台取回带框符文`;

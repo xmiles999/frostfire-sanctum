@@ -11,6 +11,7 @@ import { recordClear } from "./systems/save";
 import { officialPolicy } from "./systems/replay";
 import { EMPTY_INTENT } from "./sim/types";
 import { roomGuidance, type RoomGuidance } from "./sim/guidance";
+import { interactionLabel } from "./sim/interactions";
 
 export interface HudModel {
   timeMs: number;
@@ -31,6 +32,8 @@ export interface HudModel {
   restartHeldMs: number;
   gems: { ember: number; frost: number; total: number; collected: number; runes: number };
   guidance: RoomGuidance;
+  actions: { ember: string; frost: string };
+  feedback: string;
 }
 
 export class GameRuntime {
@@ -140,6 +143,8 @@ export class GameRuntime {
       levelId: this.sim.level.id,
       restartHeldMs: this.input.restartHeldMs,
       guidance: roomGuidance(this.sim),
+      actions: { ember: interactionLabel(this.sim, "ember"), frost: interactionLabel(this.sim, "frost") },
+      feedback: this.sim.feedback?.text ?? "",
       gems: {
         ember: collectibles.filter(g => g.who === "ember" && this.sim.collected.includes(g.id)).length,
         frost: collectibles.filter(g => g.who === "frost" && this.sim.collected.includes(g.id)).length,

@@ -60,6 +60,9 @@ export function activeHazards(sim: SimState): Hazard[] {
 
 export function solidsNow(sim: SimState): Rect[] {
   const solids = [...sim.level.solids];
+  for (const platform of sim.level.fragilePlatforms ?? []) {
+    if (sim.fragilePlatforms.find(p => p.id === platform.id)?.phase !== "gone") solids.push(platform.rect);
+  }
   if (!sim.doorOpen) solids.push(...sim.level.gatedSolids);
   if (sim.tideLevel === 1 && sim.level.tide) solids.push(...sim.level.tide.floatIce);
   for (const bridge of sim.level.bridges ?? []) {

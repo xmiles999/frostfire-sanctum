@@ -72,6 +72,8 @@ function HowTo({ onBack, onPlay }: { onBack: () => void; onPlay: () => void }) {
         </p>
         <p>开启出口需要两枚带外框的分色符文，有些符文需要先启动机关才能到达。普通晶石是支路挑战，集齐才有机会获得三星。晶石与符文只能由同色角色拾取。</p>
         <p>观察整间神殿，利用阶梯与折返平台规划路线。五关依次练习：元素分工、潮位推箱、木桥退路、反相双闸、齿轮时序。</p>
+        <p>按住 S / ↓ 精准慢行；轻点跳跃低跳，按住跳跃高跳。落地前可提前按跳跃，按住不放不会自动连跳。第三、四关带裂纹的悬台踩上后会坍塌，虚线与进度条表示正在恢复。</p>
+        <p>蓝色雪花边框是寒气区：烬禁入，朔安全。地面金属喷口是热蒸汽：冷却时可过，蓄压后开始喷发；喷发只伤害朔，烬安全。两者都不是背景装饰。</p>
         <p>
           关卡左上有 <strong>返回 / 暂停 / 重开</strong>。<kbd>Esc</kbd> 暂停，游玩中长按 <kbd>R</kbd> 0.4 秒重开，暂停或结算时点按 <kbd>R</kbd> 立即重开。1–8 关没有检查点。单人倒地有 8 秒救援窗（祭坛）。
         </p>
@@ -119,6 +121,7 @@ function Select({
                 {unlocked ? (rec?.cleared ? `${rec.stars} 星` : "未通关") : "未解锁"}
               </span>
               <span className="level-goal">{CHAPTERS[level.id].goal}</span>
+              <span className="level-challenge">挑战 {index + 1}/5 · 三星 ≤ {formatTime(level.score.starTimeMs)}</span>
             </button>
           );
         })}
@@ -292,12 +295,13 @@ function Play({ levelId, onExit, onNext }: { levelId: string; onExit: () => void
           <span>{hud?.guidance.objective ?? chapter.goal}</span>
           <span className={hud?.doorOpen ? "door-live" : ""}>{`出口 · ${doorLabel(hud)}`}</span>
         </div>
-        {showTip && <div className="level-tip" role="status">{chapter.tip}</div>}
+        {showTip && <div className="level-tip" role="status">{chapter.tip}<br />S / ↓ 精准慢行 · 点按低跳，长按高跳 · 三星：{formatTime(LEVELS.find(l => l.id === levelId)!.score.starTimeMs)} 内全收集且零死亡</div>}
+        <div className="sr-only" role="status">{hud?.feedback ?? ""}</div>
         <div className="hud-bot">
-          <div className="player-control ember"><strong>烬<small className="player-gems" aria-label={`烬已收集 ${hud?.gems.ember ?? 0} 件，共 3 件`}>◇ {hud?.gems.ember ?? 0}/3</small></strong><span><kbd>A</kbd><kbd>D</kbd> 移动　<kbd>W</kbd> 跳跃　<kbd>J</kbd> 交互</span><small>熔岩安全 · 避开水 / 冰雾</small></div>
-          <div className="room-status"><span>{hud?.guidance.mechanism ?? "机关待命"}</span><small>{hud?.guidance.detail ?? "同色拾取 ◇ · 双人抵达出口"}</small></div>
+          <div className="player-control ember"><strong>烬<small className="player-gems" aria-label={`烬已收集 ${hud?.gems.ember ?? 0} 件，共 3 件`}>◇ {hud?.gems.ember ?? 0}/3</small></strong><span><kbd>A</kbd><kbd>D</kbd> 移动　<kbd>W</kbd> 跳跃　<kbd>J</kbd> 交互</span><small className="player-action">{hud?.actions.ember ?? "S 精准慢行 · 熔岩安全"}</small></div>
+          <div className="room-status"><span>{hud?.guidance.mechanism ?? "机关待命"}</span><small className={hud?.feedback ? "action-feedback" : ""}>{hud?.feedback || hud?.guidance.detail || "同色拾取 ◇ · 双人抵达出口"}</small></div>
           {hud?.separated ? <div className="tag warn">失联 · 远端减速</div> : null}
-          <div className="player-control frost"><strong>朔<small className="player-gems" aria-label={`朔已收集 ${hud?.gems.frost ?? 0} 件，共 3 件`}>◇ {hud?.gems.frost ?? 0}/3</small></strong><span><kbd>←</kbd><kbd>→</kbd> 移动　<kbd>↑</kbd> 跳跃　<kbd>;</kbd> 交互</span><small>水域安全 · 避开熔岩 / 热蒸汽</small></div>
+          <div className="player-control frost"><strong>朔<small className="player-gems" aria-label={`朔已收集 ${hud?.gems.frost ?? 0} 件，共 3 件`}>◇ {hud?.gems.frost ?? 0}/3</small></strong><span><kbd>←</kbd><kbd>→</kbd> 移动　<kbd>↑</kbd> 跳跃　<kbd>;</kbd> 交互</span><small className="player-action">{hud?.actions.frost ?? "↓ 精准慢行 · 水域安全"}</small></div>
         </div>
         <div className="keyboard-notice">建议横屏并连接键盘，支持同机双人游玩</div>
       </div>

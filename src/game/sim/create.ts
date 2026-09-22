@@ -21,6 +21,10 @@ function makeActor(
     jumpBufferMs: 0,
     jumpWasHeld: false,
     landMs: 0,
+    landImpact: 0,
+    moveDir: 0,
+    pushing: false,
+    interactMs: 0,
     downed: false,
     invulnMs: 0,
     anim: "idle",
@@ -88,9 +92,12 @@ export function createSim(level: LevelDocument): SimState {
     phaseLockMs: 0,
     extraHeld: {},
     extraHeldMs: {},
+    phasePlateLatched: {},
     leverInside: {},
     gearArmedMs: null,
     puzzleHint: "",
     collected: [],
+    fragilePlatforms: (level.fragilePlatforms ?? []).map(p => ({ id: p.id, phase: "stable", remainingMs: 0 })),
+    feedback: null,
   };
 }

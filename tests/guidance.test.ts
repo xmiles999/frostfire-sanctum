@@ -20,7 +20,7 @@ describe("state-driven player guidance", () => {
     const sim = createSim(LEVELS[4]);
     sim.ember.x = 11 * TILE;
     sim.gearArmedMs = 1500;
-    expect(roomGuidance(sim).mechanism).toBe("首闸 · 可通过 1.5s");
+    expect(roomGuidance(sim).mechanism).toBe("首闸 · 可通过 1.3s");
     sim.gearArmedMs = 3500;
     expect(roomGuidance(sim).mechanism).toBe("首闸 · 7.9s 后开启");
     sim.frost.x = 8.6 * TILE;

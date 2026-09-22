@@ -10,8 +10,6 @@ import {
   FALL_SPEED_MAX,
   FROST_SPEED,
   GRAVITY,
-  HURT_MS,
-  IGNITE_RANGE,
   LAVA_SPEED_SCALE,
   MAX_SEPARATION,
   PHASE_LOCK_MS,
@@ -28,11 +26,15 @@ import {
   WISP_PATROL_SPEED,
   WISP_RANGE,
   WISP_SPEED,
+  PRECISION_SPEED_SCALE,
 } from "../engine/constants";
 import { actorRect, integrateActor } from "../engine/physics";
 import type { ActorState, Hazard, Intent, PairIntent, SimState } from "./types";
 import { steamAt } from "./steam";
 import { activeHazards, applyOneWays, crateRect, onIce, runesReady, solidsNow, standingOnPlate } from "./world";
+import { updateActorAnimation } from "./animation";
+import { stepFragilePlatforms } from "./fragile";
+import { canIgnite, nearInteraction, notify } from "./interactions";
 
 function lethalFor(actor: ActorState, type: Hazard["type"], steamLethal: boolean): boolean {
   if (actor.invulnMs > 0 || actor.downed) return false;
@@ -52,6 +54,7 @@ function downActor(sim: SimState, actor: ActorState, cause: string): void {
   actor.animTime = 0;
   sim.deaths += 1;
   sim.downedCause = cause;
+  notify(sim, `${actor.id === "ember" ? "烬" : "朔"}倒地 · 同伴到祭坛救援`);
 }
 
 function stepWisp(sim: SimState, dt: number): void {
@@ -158,6 +161,7 @@ function latchDoor(sim: SimState, latchMs = DOOR_LATCH_MS): void {
   sim.doorPhase = "opening";
   sim.doorMotionMs = DOOR_MOTION_MS;
   sim.latchMs = latchMs;
+  notify(sim, "出口已开启 · 双人进入同色门");
 }
 
 function stepDoor(sim: SimState, dtMs: number): void {
@@ -198,7 +202,9 @@ function stepActor(
   baseSpeed: number,
   dt: number,
 ): void {
-  let speed = baseSpeed;
+  let speed = baseSpeed * (intent.down ? PRECISION_SPEED_SCALE : 1);
+  actor.pushing = false;
+  actor.interactMs = Math.max(0, actor.interactMs - dt * 1000);
   if (actor.id === "ember" && inLava(sim, actor)) speed *= LAVA_SPEED_SCALE;
   if (sim.status === "playing" || sim.status === "rescue_window") {
     const midX = (sim.ember.x + sim.frost.x) / 2;
@@ -222,18 +228,10 @@ function stepActor(
   );
   applyOneWays(sim, actor);
   actor.invulnMs = Math.max(0, actor.invulnMs - dt * 1000);
-  actor.animTime += dt;
   const worldH = sim.level.size.h * TILE;
   if (!actor.downed && actor.y > worldH + TILE) {
     downActor(sim, actor, "void");
   }
-  if (actor.downed) {
-    actor.anim = actor.animTime * 1000 < HURT_MS ? "hurt" : "downed";
-  } else if (!actor.onGround) actor.anim = actor.vy < 0 ? "jump" : "fall";
-  else if (actor.landMs > 0) actor.anim = "land";
-  else if (Math.abs(actor.vx) > 8) actor.anim = "walk";
-  else if (intent.interact) actor.anim = "interact";
-  else actor.anim = "idle";
 }
 
 function waterTopForCrate(sim: SimState, crate: SimState["crates"][number]): number | null {
@@ -270,6 +268,7 @@ function stepCrates(sim: SimState, dt: number): void {
         continue;
       }
       if (Math.abs(actor.vx) > 8) {
+        actor.pushing = true;
         crate.vx = actor.vx * CRATE_PUSH_SCALE;
         if (actor.vx > 0) actor.x = crate.x - actor.w;
         else actor.x = crate.x + crate.w;
@@ -297,16 +296,7 @@ function stepCrates(sim: SimState, dt: number): void {
 function interactEdge(actor: ActorState, intent: Intent): boolean {
   const pressed = intent.interact && !actor.interactHeld;
   actor.interactHeld = intent.interact;
-  return pressed;
-}
-
-function nearRect(actor: ActorState, rect: Rect, pad = 18): boolean {
-  return rectsOverlap(actorRect(actor), {
-    x: rect.x - pad,
-    y: rect.y - pad,
-    w: rect.w + pad * 2,
-    h: rect.h + pad * 2,
-  });
+  return pressed && !actor.downed;
 }
 
 function hittingLever(actor: ActorState, lever: { rect: Rect }): boolean {
@@ -328,26 +318,30 @@ function stepLevers(sim: SimState, intents: PairIntent): void {
     sim.leverInside[lever.id] = touching;
     const used =
       entered ||
-      (emberEdge && nearRect(sim.ember, lever.rect)) ||
-      (frostEdge && nearRect(sim.frost, lever.rect));
+      (emberEdge && nearInteraction(sim.ember, lever.rect)) ||
+      (frostEdge && nearInteraction(sim.frost, lever.rect));
     if (!used) continue;
+    for (const actor of [sim.ember, sim.frost]) {
+      if (nearInteraction(actor, lever.rect)) actor.interactMs = 300;
+    }
     if (lever.kind === "tide") {
       sim.tideLevel = sim.tideLevel === 0 ? 2 : sim.tideLevel === 2 ? 1 : 0;
+      notify(sim, `潮位已切换 · ${["浅水", "中水", "深水"][sim.tideLevel]}`);
     }
     if (lever.kind === "gear") {
       sim.gearArmedMs = 0;
+      notify(sim, "齿轮周期启动 · 朔准备穿首闸");
     }
   }
   if (emberEdge && sim.level.bridges) {
     for (const bridge of sim.level.bridges) {
-      if (!bridge.oily) continue;
-      const cx = sim.ember.x + sim.ember.w / 2;
-      const cy = sim.ember.y + sim.ember.h / 2;
-      const bx = bridge.rect.x + bridge.rect.w / 2;
-      const by = bridge.rect.y + bridge.rect.h / 2;
-      if (Math.abs(cx - bx) <= 2.2 * TILE && Math.abs(cy - by) <= IGNITE_RANGE) {
+      if (canIgnite(sim.ember, bridge)) {
         const rt = sim.bridges.find((b) => b.id === bridge.id);
-        if (rt && !rt.ignited && !rt.collapsed) rt.ignited = true;
+        if (rt && !rt.ignited && !rt.collapsed) {
+          rt.ignited = true;
+          sim.ember.interactMs = 400;
+          notify(sim, "油桥已点燃 · 等待灰烬形成");
+        }
       }
     }
   }
@@ -392,19 +386,20 @@ function stepBridges(sim: SimState, dt: number): void {
 
 function stepPhase(sim: SimState, dt: number): void {
   if (sim.level.puzzle !== "phase") return;
-  if (sim.phaseLockMs > 0) {
-    sim.phaseLockMs = Math.max(0, sim.phaseLockMs - dt * 1000);
-    return;
-  }
+  sim.phaseLockMs = Math.max(0, sim.phaseLockMs - dt * 1000);
   for (const plate of sim.level.extraPlates ?? []) {
     const actor = plate.who === "frost" ? sim.frost : sim.ember;
     const held = actorStandingOnPlate(actor, plate.rect);
     sim.extraHeld[plate.id] = held;
-    sim.extraHeldMs[plate.id] = held ? (sim.extraHeldMs[plate.id] ?? 0) + dt * 1000 : 0;
+    if (!held) sim.phasePlateLatched[plate.id] = false;
+    sim.extraHeldMs[plate.id] = held && !sim.phasePlateLatched[plate.id] && sim.phaseLockMs === 0
+      ? (sim.extraHeldMs[plate.id] ?? 0) + dt * 1000 : 0;
     if ((sim.extraHeldMs[plate.id] ?? 0) >= PLATE_HOLD_MS) {
       sim.phase = sim.phase === 0 ? 1 : 0;
       sim.phaseLockMs = PHASE_LOCK_MS;
       sim.extraHeldMs[plate.id] = 0;
+      sim.phasePlateLatched[plate.id] = true;
+      notify(sim, sim.phase === 0 ? "火闸已开 · 烬可以进入" : "水闸已开 · 朔可以进入");
     }
   }
 }
@@ -463,11 +458,14 @@ function maybeRescue(sim: SimState, intents: PairIntent): void {
     downed.downed = false;
     downed.invulnMs = REVIVE_INVULN_MS;
     downed.anim = "idle";
+    downed.animTime = 0;
+    living.interactMs = 400;
     sim.chargeLeft -= 1;
     sim.chargeUsed = true;
     sim.rescues += 1;
     sim.status = "playing";
     sim.rescueMs = 0;
+    notify(sim, "救援成功 · 短暂无敌，尽快离开危险区");
   }
 }
 
@@ -475,6 +473,10 @@ export function stepSim(sim: SimState, intents: PairIntent, dt = PHYS_DT): void 
   if (sim.status === "paused" || sim.status === "failed" || sim.status === "cleared") return;
 
   sim.timeMs += dt * 1000;
+  if (sim.feedback) {
+    sim.feedback.remainingMs -= dt * 1000;
+    if (sim.feedback.remainingMs <= 0) sim.feedback = null;
+  }
   const steam = steamAt(sim.timeMs);
   sim.steamPhase = steam.phase;
   sim.steamPhaseMs = steam.phaseMs;
@@ -485,9 +487,11 @@ export function stepSim(sim: SimState, intents: PairIntent, dt = PHYS_DT): void 
     const actor = sim[gem.who];
     if (!actor.downed && !sim.collected.includes(gem.id) && rectsOverlap(actorRect(actor), gem.rect)) {
       sim.collected.push(gem.id);
+      notify(sim, `${gem.who === "ember" ? "烬" : "朔"}取得${gem.required ? "符文" : "晶石"} · ${sim.collected.length}/${sim.level.collectibles?.length ?? 0}`);
     }
   }
   stepPuzzles(sim, intents, dt);
+  stepFragilePlatforms(sim, dt * 1000);
   stepWisp(sim, dt);
   applyHazards(sim);
   stepDoor(sim, dt * 1000);
@@ -517,6 +521,8 @@ export function stepSim(sim: SimState, intents: PairIntent, dt = PHYS_DT): void 
   } else if (sim.status === "rescue_window") {
     sim.status = "playing";
   }
+  updateActorAnimation(sim.ember, dt);
+  updateActorAnimation(sim.frost, dt);
 }
 
 export function starsFor(sim: SimState): 1 | 2 | 3 {

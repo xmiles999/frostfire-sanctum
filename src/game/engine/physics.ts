@@ -11,6 +11,9 @@ import {
   JUMP_RELEASE_MULTIPLIER,
   JUMP_SPEED,
   LAND_RECOVERY_MS,
+  MOVE_ACCEL,
+  MOVE_BRAKE,
+  FALL_GRAVITY_SCALE,
 } from "./constants";
 import type { ActorState } from "../sim/types";
 
@@ -74,6 +77,7 @@ export function integrateActor(
   a.jumpWasHeld = wantJump;
 
   const dir = (wantRight ? 1 : 0) - (wantLeft ? 1 : 0);
+  a.moveDir = dir as -1 | 0 | 1;
   if (dir !== 0) a.facing = dir as 1 | -1;
   if (ice) {
     a.vx += dir * ICE_ACCEL * dt;
@@ -86,7 +90,10 @@ export function integrateActor(
     if (a.vx > cap) a.vx = cap;
     if (a.vx < -cap) a.vx = -cap;
   } else {
-    a.vx = dir * speed;
+    const target = dir * speed;
+    const rate = dir === 0 ? MOVE_BRAKE : MOVE_ACCEL;
+    const delta = target - a.vx;
+    a.vx += Math.sign(delta) * Math.min(Math.abs(delta), rate * dt);
   }
 
   if (jumpPressed) a.jumpBufferMs = JUMP_BUFFER_MS;
@@ -95,7 +102,7 @@ export function integrateActor(
   if (a.onGround) a.coyoteMs = COYOTE_MS;
   else a.coyoteMs = Math.max(0, a.coyoteMs - dt * 1000);
 
-  a.vy += GRAVITY * dt;
+  a.vy += GRAVITY * (a.vy > 0 ? FALL_GRAVITY_SCALE : 1) * dt;
   if (a.vy > FALL_SPEED_MAX) a.vy = FALL_SPEED_MAX;
 
   if (a.jumpBufferMs > 0 && a.coyoteMs > 0) {
@@ -109,7 +116,8 @@ export function integrateActor(
     a.vy *= JUMP_RELEASE_MULTIPLIER;
   }
 
-  resolveAxis(a, solids, a.vx * dt, 0);
+  if (resolveAxis(a, solids, a.vx * dt, 0)) a.vx = 0;
+  const impactSpeed = a.vy;
   const yHit = resolveAxis(a, solids, 0, a.vy * dt);
   if (yHit && a.vy > 0) {
     a.onGround = true;
@@ -121,6 +129,9 @@ export function integrateActor(
     a.onGround = false;
   }
 
-  if (!wasGrounded && a.onGround) a.landMs = LAND_RECOVERY_MS;
+  if (!wasGrounded && a.onGround) {
+    a.landMs = LAND_RECOVERY_MS;
+    a.landImpact = Math.min(1, Math.max(0.25, impactSpeed / FALL_SPEED_MAX));
+  }
   else a.landMs = Math.max(0, a.landMs - dt * 1000);
 }

@@ -15,9 +15,9 @@ export function gem(id: string, who: "ember" | "frost", x: number, floor: number
 export const CHAPTERS: Record<string, { theme: string; goal: string; tip: string }> = {
   "01": { theme: "元素与分工", goal: "取回双符文 · 踩板接应 · 穿过蒸汽", tip: "烬先吸引残烬并压住铜板，朔再通过下层石门。蒸汽停歇时出发。" },
   "02": { theme: "潮位与配重", goal: "推箱入井 · 升潮沉箱 · 降潮会合", tip: "朔先把箱子推到井边，烬把潮位拨到深水；开门后调回中水，再到铜板接应。" },
-  "03": { theme: "木桥与退路", goal: "先过木桥 · 再点燃 · 等待灰烬", tip: "先让朔越过木桥，烬再在油桥上方按 J 点燃。灰烬落定后接应同伴。" },
-  "04": { theme: "反相与接力", goal: "朔先入水闸 · 切换相位 · 烬再进", tip: "先由烬引走残烬。朔进入内环后踩冰板切换闸门，再由烬压板接应。" },
-  "05": { theme: "时序与同步", goal: "启动齿轮 · 中室攀台取符文 · 接力穿闸", tip: "烬取阁楼符文后按 J 启动拨杆。朔穿过首闸，在中室攀台取冰符文，再等末闸。左侧悬台是可选晶石；齿轮每 10 秒循环，错过可等下一轮。" },
+  "03": { theme: "木桥与退路", goal: "碎台取晶 · 先过桥再点燃 · 灰烬接应", tip: "右侧裂纹悬台停留 0.9 秒会塌，取晶后及时跳回。先让朔越过木桥，烬再按 J 点燃；灰烬落定后接应同伴。" },
+  "04": { theme: "反相与接力", goal: "碎台折返 · 朔先入水闸 · 换相接力", tip: "左侧悬台只支撑 0.65 秒，取晶后跳回。烬引走残烬，朔踩内环冰板换相；持续站在板上不会反复切换，离板后可再次触发。" },
+  "05": { theme: "时序与同步", goal: "启动齿轮 · 中室攀台取符文 · 接力穿闸", tip: "烬取阁楼符文后启动拨杆；朔在首闸 1.4–2.8 秒窗口进入中室攀台取符文，再抓住末闸 3.6–6.4 秒窗口。错过可等下一轮，齿轮每 10 秒循环。" },
 };
 
 const BRANCHES = {
@@ -64,6 +64,8 @@ export function lowerBranch(variant: number): { solids: Rect[]; collectibles: Co
 
 export function finishRoom(level: LevelDocument): LevelDocument {
   const branch = lowerBranch(Number(level.id));
+  // Tighter optional three-star goals; running out never ends an otherwise valid attempt.
+  level.score.starTimeMs = [120, 110, 100, 90, 80][Number(level.id) - 1] * 1000;
   // The former long shelf was not reachable and blocked the new staircase.
   level.solids = level.solids.filter(s => !(s.w > s.h && Math.abs(s.y - roomY(16) * TILE) < 1));
   const ceiling = level.solids.find(s => s.y === 0 && s.w > s.h);
@@ -77,6 +79,15 @@ export function finishRoom(level: LevelDocument): LevelDocument {
     }
   }
   level.solids.push(...branch.solids);
+  if (level.id === "03" || level.id === "04") {
+    const bonus = branch.solids.at(-1)!;
+    level.solids = level.solids.filter(s => s !== bonus);
+    level.fragilePlatforms = [{
+      id: "bonus_crumble", rect: bonus,
+      crumbleMs: level.id === "03" ? 900 : 650,
+      respawnMs: 2200,
+    }];
+  }
   if (level.id === "04") {
     for (const gate of level.phaseGates ?? []) {
       if (gate.side !== "water") continue;

@@ -6,10 +6,14 @@ export const GRAVITY = 2400;
 export const JUMP_SPEED = 720;
 /** Releasing jump while rising trims the arc without making taps feel abrupt. */
 export const JUMP_RELEASE_MULTIPLIER = 0.52;
-export const EMBER_SPEED = 380;
+export const EMBER_SPEED = 360;
 export const FROST_SPEED = 350;
-export const COYOTE_MS = 80;
-export const JUMP_BUFFER_MS = 100;
+export const MOVE_ACCEL = 7200;
+export const MOVE_BRAKE = 12000;
+export const PRECISION_SPEED_SCALE = 0.5;
+export const FALL_GRAVITY_SCALE = 1.08;
+export const COYOTE_MS = 100;
+export const JUMP_BUFFER_MS = 120;
 export const LAND_RECOVERY_MS = 120;
 export const ACTOR_W = 22;
 export const ACTOR_H = 34;
