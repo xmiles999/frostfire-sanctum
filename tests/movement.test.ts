@@ -161,7 +161,7 @@ describe("character action presentation", () => {
     expect(actorPose(actor).frame).toBe(2);
     actor.vy = 760;
     updateActorAnimation(actor, PHYS_DT);
-    expect(actorPose(actor).frame).toBe(5);
+    expect(actorPose(actor).frame).toBe(3);
     expect(actorPose(actor).loop).toBe(false);
   });
 
@@ -224,5 +224,34 @@ describe("character action presentation", () => {
     expect(before - after).toBeLessThan(0.001);
     actor.vy = 0;
     expect(actorPose(actor).scaleY).toBe(1);
+  });
+
+  it("holds the apex pose across zero velocity and reserves the crouched tail frames for no airborne state", () => {
+    const actor = createSim(blankLevel()).ember;
+    actor.anim = "jump";
+    actor.vy = -1;
+    const rising = actorPose(actor);
+    actor.anim = "fall";
+    actor.vy = 1;
+    expect(actorPose(actor).frame).toBe(rising.frame);
+    for (const speed of [150, 300, 576, 1120]) {
+      actor.vy = speed;
+      expect(actorPose(actor).frame).toBe(3);
+      expect(actorPose(actor).loop).toBe(false);
+    }
+  });
+
+  it("does not carry landing compression or pushing into a buffered jump", () => {
+    const actor = createSim(blankLevel()).ember;
+    actor.anim = "jump";
+    actor.vy = -JUMP_SPEED;
+    actor.landMs = LAND_RECOVERY_MS;
+    actor.landImpact = 1;
+    actor.pushing = true;
+    const pose = actorPose(actor);
+    expect(pose.scaleY).toBeGreaterThanOrEqual(1);
+    actor.landMs = 0;
+    actor.pushing = false;
+    expect(actorPose(actor)).toEqual(pose);
   });
 });
