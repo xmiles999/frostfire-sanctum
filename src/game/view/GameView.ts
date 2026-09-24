@@ -13,7 +13,6 @@ import {
   BRIDGE_BURN_MS,
   BRIDGE_STAND_IGNITE_MS,
   DOOR_LATCH_MS,
-  DOOR_MOTION_MS,
   IGNITE_RANGE,
   LAND_RECOVERY_MS,
   PHASE_LOCK_MS,
@@ -26,6 +25,7 @@ import { actorRect } from "../engine/physics";
 import type { ActorState, CrateState, Hazard, LeverSpec, SimState } from "../sim/types";
 import { activeHazards, gearWindowOpen, holdGateOpen, runesReady } from "../sim/world";
 import { actorPose } from "./actorPose";
+import { doorOpenAmount, GATE_STYLE, GateMotion, gateLeaves, gateRungs } from "./gateVisuals";
 import { STEAM_STYLE, steamParticles } from "./hazardVisuals";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/?$/, "/");
@@ -95,7 +95,7 @@ export class GameView {
   private plateEmber!: Sprite;
   private plateFrost!: Sprite;
   private altar!: Sprite;
-  private doorSprites: Sprite[] = [];
+  private gateMotion = new GateMotion();
   private liquids: {
     kind: "lava" | "water";
     rect: Rect;
@@ -300,7 +300,7 @@ export class GameView {
       if (child !== this.plateEmber && child !== this.plateFrost && child !== this.altar) child.destroy();
     }
     this.liquids = [];
-    this.doorSprites = [];
+    this.gateMotion.clear();
     this.deathFx = [];
     this.downedSeen = { ember: false, frost: false };
     this.collectedSeen.clear();
@@ -360,15 +360,6 @@ export class GameView {
       this.props.addChild(body, surface);
       this.liquids.push({ kind, rect: h.rect, body, surface });
     }
-    this.doorSprites = sim.level.gatedSolids.map((s) => {
-      const d = new Sprite(doorTex);
-      d.anchor.set(0.5, 1);
-      d.x = s.x + s.w / 2;
-      d.y = s.y + s.h;
-      d.scale.set(s.w / doorTex.width, s.h / doorTex.height);
-      this.props.addChild(d);
-      return d;
-    });
     this.props.addChild(this.plateEmber, this.plateFrost, this.altar);
 
     for (const who of ["ember", "frost"] as const) {
@@ -431,16 +422,7 @@ export class GameView {
     this.altar.x = sim.level.altar.x + sim.level.altar.w / 2;
     this.altar.y = sim.level.altar.y + sim.level.altar.h;
 
-    const doorProgress = this.doorProgress(sim);
-    for (const [index, d] of this.doorSprites.entries()) {
-      const gate = sim.level.gatedSolids[index];
-      if (!gate) continue;
-      const direction = index === 0 ? -1 : 1;
-      d.visible = true;
-      d.x = gate.x + gate.w / 2;
-      d.y = gate.y + gate.h + direction * gate.h * 0.92 * doorProgress;
-      d.alpha = 1 - doorProgress * 0.18;
-    }
+    const doorProgress = doorOpenAmount(sim, this.reducedMotion.matches);
 
     const visualSim = this.reducedMotion.matches ? { ...sim, timeMs: 0 } : sim;
     this.flowLiquids(this.reducedMotion.matches ? 0 : dt);
@@ -574,15 +556,29 @@ export class GameView {
     }
   }
 
-  private doorProgress(sim: SimState): number {
-    if (sim.doorPhase === "open") return 1;
-    if (sim.doorPhase === "opening") {
-      return 1 - Math.max(0, Math.min(1, sim.doorMotionMs / DOOR_MOTION_MS));
+  private paintGate(g: Graphics, rect: Rect, progress: number, color: number): void {
+    // Recessed side tracks mark the exact collision width without a solid wall of colour.
+    for (const x of [rect.x, rect.x + rect.w - 3]) {
+      g.rect(x, rect.y, 3, rect.h).fill({ color: GATE_STYLE.track, alpha: 0.85 });
+      g.rect(x + 1, rect.y, 1, rect.h).fill({ color: GATE_STYLE.edge, alpha: 0.4 });
     }
-    if (sim.doorPhase === "closing") {
-      return Math.max(0, Math.min(1, sim.doorMotionMs / DOOR_MOTION_MS));
+    for (const y of [rect.y, rect.y + rect.h - 4]) {
+      g.roundRect(rect.x, y, rect.w, 4, 1).fill({ color: GATE_STYLE.cap, alpha: 1 });
     }
-    return 0;
+    const leaves = gateLeaves(rect, progress);
+    for (const [index, leaf] of leaves.entries()) {
+      g.rect(leaf.x, leaf.y, leaf.w, leaf.h).fill({ color: GATE_STYLE.recess, alpha: 0.28 });
+      for (const x of [leaf.x + 2, leaf.x + leaf.w - 4]) {
+        g.rect(x, leaf.y, 2, leaf.h).fill({ color, alpha: 0.9 });
+        g.rect(x, leaf.y, 0.7, leaf.h).fill({ color: GATE_STYLE.highlight, alpha: 0.5 });
+      }
+      const capH = Math.min(3, leaf.h);
+      const capY = index === 0 ? leaf.y + leaf.h - capH : leaf.y;
+      g.rect(leaf.x, capY, leaf.w, capH).fill({ color, alpha: 1 });
+    }
+    for (const rung of gateRungs(rect, progress)) {
+      g.rect(rung.x, rung.y, rung.w, rung.h).fill({ color, alpha: 0.78 });
+    }
   }
 
   private paintMechanisms(sim: SimState, doorProgress: number): void {
@@ -652,22 +648,23 @@ export class GameView {
     }
 
     for (const [index, gate] of sim.level.gatedSolids.entries()) {
+      this.paintGate(g, gate, doorProgress, GATE_STYLE.brass);
       const cx = gate.x + gate.w / 2;
-      const cy = index === 0 ? gate.y + gate.h - 48 : gate.y + 48;
+      const cy = gate.y + (index === 0 ? 12 : gate.h - 12);
       const latchT = sim.doorOpen ? Math.max(0, Math.min(1, sim.latchMs / DOOR_LATCH_MS)) : 0;
       const color = sim.doorOpen ? (latchT < 0.25 ? 0xff8a5c : 0xe8be68) : 0x71654e;
-      g.circle(cx, cy, 22);
+      g.circle(cx, cy, 9);
       g.fill({ color: 0x111214, alpha: 0.76 });
-      g.stroke({ color: 0x6f675b, width: 4, alpha: 0.9 });
+      g.stroke({ color: 0x6f675b, width: 1.5, alpha: 0.9 });
       if (sim.doorOpen) {
-        g.arc(cx, cy, 18, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * latchT);
-        g.stroke({ color, width: 5, alpha: 1 });
+        g.arc(cx, cy, 7, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * latchT);
+        g.stroke({ color, width: 2, alpha: 1 });
       }
-      g.roundRect(cx - 6, cy - 8 + doorProgress * 4, 12, 16 - doorProgress * 7, 3);
+      g.roundRect(cx - 2.5, cy - 4 + doorProgress * 2, 5, 8 - doorProgress * 4, 1);
       g.fill({ color, alpha: 0.9 });
       if (sim.level.puzzle === "tide") {
         const gem = this.tideSeated(sim);
-        this.paintDiamond(g, cx, cy, gem ? 9 : 7, gem ? 0xf0d078 : 0x6a5a38, gem ? 1 : 0.75);
+        this.paintDiamond(g, cx, cy, gem ? 4 : 3, gem ? 0xf0d078 : 0x6a5a38, gem ? 1 : 0.75);
       }
     }
 
@@ -1175,18 +1172,11 @@ export class GameView {
     for (const gate of sim.level.phaseGates) {
       const open = gate.side === "lava" ? lavaOpen : !lavaOpen;
       const color = gate.side === "lava" ? 0xb85a28 : 0x3a7a92;
+      const progress = this.gateMotion.sample(`phase:${gate.id}`, open, sim.timeMs, this.reducedMotion.matches);
       for (const r of gate.rects) {
         const cx = r.x + r.w / 2;
-        if (open) {
-          g.roundRect(r.x - 4, r.y - 10, r.w + 8, 14, 3);
-          g.fill({ color, alpha: 0.55 });
-        } else {
-          g.roundRect(r.x, r.y, r.w, r.h, 3);
-          g.fill({ color, alpha: 0.9 });
-          g.roundRect(r.x + 2, r.y + 8, r.w - 4, r.h - 16, 2);
-          g.fill({ color: 0x1a1612, alpha: 0.35 });
-        }
-        this.paintDiamond(g, cx, r.y + (open ? 4 : r.h / 2), 7, open ? 0xfff3c0 : 0x3a2e18, 0.9);
+        this.paintGate(g, r, progress, color);
+        this.paintDiamond(g, cx, r.y + 10, 5, open ? 0xfff3c0 : color, 0.9);
         this.paintLink(g, gx, gy, cx, r.y + r.h / 2, open, color, sim.timeMs);
       }
     }
@@ -1204,6 +1194,7 @@ export class GameView {
     for (const gate of sim.level.holdGates ?? []) {
       const held = holdGateOpen(sim, gate);
       const color = gate.who === "frost" ? 0x8edfff : 0xffa45f;
+      const progress = this.gateMotion.sample(`hold:${gate.id}`, held, sim.timeMs, this.reducedMotion.matches);
       g.roundRect(gate.plate.x - 4, gate.plate.y - 6, gate.plate.w + 8, gate.plate.h + 10, 6);
       g.fill({ color: 0x2c261e, alpha: 0.8 });
       g.roundRect(gate.plate.x, gate.plate.y - 4, gate.plate.w, gate.plate.h + 6, 4);
@@ -1212,16 +1203,8 @@ export class GameView {
       for (const r of gate.rects) {
         const cx = r.x + r.w / 2;
         const cy = r.y + r.h / 2;
-        if (held) {
-          g.roundRect(r.x - 3, r.y, r.w + 6, 10, 3);
-          g.fill({ color, alpha: 0.45 });
-        } else {
-          g.roundRect(r.x, r.y, r.w, r.h, 3);
-          g.fill({ color: 0x8a7048, alpha: 0.94 });
-          g.roundRect(r.x + 3, r.y + 10, r.w - 6, r.h - 20, 2);
-          g.fill({ color: 0x2a2218, alpha: 0.35 });
-        }
-        this.paintChevron(g, cx, held ? r.y + 8 : cy, 8, held ? 0xfff3c0 : 0x3a2e18, 0.95);
+        this.paintGate(g, r, progress, GATE_STYLE.brass);
+        this.paintChevron(g, cx, r.y + 10, 5, held ? 0xfff3c0 : color, 0.95);
         this.paintLink(g, gate.plate.x + gate.plate.w, gate.plate.y, cx, cy, held, color, sim.timeMs);
       }
     }
@@ -1245,6 +1228,7 @@ export class GameView {
       const fake = win.id.includes("early") || win.id.includes("fake");
       const fire = win.id.includes("fire");
       const color = fire ? 0xffa45f : fake ? 0x6a8890 : 0x8edfff;
+      const progress = this.gateMotion.sample(`gear:${win.id}`, open, sim.timeMs, this.reducedMotion.matches);
       for (const r of win.solidsWhenClosed) {
         const cx = r.x + r.w / 2;
         const top = r.y - 18;
@@ -1254,22 +1238,8 @@ export class GameView {
         g.ellipse(cx + Math.sin(swing) * 8, top + 10 + Math.abs(Math.sin(swing)) * 2, 9, 12);
         g.fill({ color: open ? 0xe8c56a : 0x6e6758, alpha: 0.95 });
         g.stroke({ color: 0xf0e2c4, width: 1.5, alpha: open ? 0.9 : 0.4 });
-        if (open) {
-          g.roundRect(r.x - 4, r.y, r.w + 8, 8, 3);
-          g.fill({ color, alpha: 0.5 });
-          g.roundRect(r.x - 4, r.y + r.h - 8, r.w + 8, 8, 3);
-          g.fill({ color, alpha: 0.5 });
-        } else {
-          g.roundRect(r.x, r.y, r.w, r.h, 3);
-          g.fill({ color: fake ? 0x5a5048 : 0x6e6758, alpha: 0.94 });
-          if (fake) {
-            g.rect(r.x + 2, r.y + 16, r.w - 4, 3);
-            g.fill({ color: 0x2a2218, alpha: 0.55 });
-            g.rect(r.x + 4, r.y + r.h * 0.55, r.w - 8, 2);
-            g.fill({ color: 0x8a7048, alpha: 0.4 });
-          }
-        }
-        this.paintDiamond(g, cx, open ? r.y + 10 : r.y + r.h / 2, 7, open ? 0xfff3c0 : color, 0.9);
+        this.paintGate(g, r, progress, fake ? GATE_STYLE.worn : GATE_STYLE.brass);
+        this.paintDiamond(g, cx, r.y + 10, 5, open ? 0xfff3c0 : color, 0.9);
         if (lever) this.paintLink(g, lx, ly, cx, r.y + 12, open, color, sim.timeMs);
       }
     }

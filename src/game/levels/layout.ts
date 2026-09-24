@@ -98,6 +98,18 @@ export function finishRoom(level: LevelDocument): LevelDocument {
       }
     }
   }
+  // Slim the actual obstacle as well as its art. Keep its centre and anti-bypass height.
+  const gateRects = [
+    ...level.gatedSolids,
+    ...(level.holdGates ?? []).flatMap(g => g.rects),
+    ...(level.phaseGates ?? []).flatMap(g => g.rects),
+    ...(level.gear?.windows ?? []).flatMap(g => g.solidsWhenClosed),
+  ];
+  for (const rect of gateRects) {
+    const width = Math.min(rect.w, TILE * 0.5);
+    rect.x += (rect.w - width) / 2;
+    rect.w = width;
+  }
   if (level.id === "05") {
     level.solids.push({ x: 10.2 * TILE, y: 11.7 * TILE, w: 1.8 * TILE, h: 14 });
     branch.collectibles.push(gem("frost-rune", "frost", 11.1, 11.7, true));
