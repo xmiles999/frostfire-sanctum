@@ -15,6 +15,7 @@ import {
   DOOR_LATCH_MS,
   DOOR_MOTION_MS,
   IGNITE_RANGE,
+  LAND_RECOVERY_MS,
   PHASE_LOCK_MS,
   PLATE_HOLD_MS,
   TILE,
@@ -751,7 +752,7 @@ export class GameView {
     this.paintDeathFx(g);
     for (const a of [sim.ember, sim.frost]) {
       if (a.landMs > 0 && !this.reducedMotion.matches) {
-        const t = 1 - Math.max(0, Math.min(1, a.landMs / 120));
+        const t = 1 - Math.max(0, Math.min(1, a.landMs / LAND_RECOVERY_MS));
         const radius = 8 + t * 24 * a.landImpact;
         g.ellipse(a.x + a.w / 2, a.y + a.h - 2, radius, 5 + t * 3);
         g.stroke({

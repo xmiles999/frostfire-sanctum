@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EMBER_SPEED, JUMP_SPEED, PHYS_DT, TILE } from "../src/game/engine/constants";
+import { EMBER_SPEED, JUMP_SPEED, LAND_RECOVERY_MS, PHYS_DT, TILE } from "../src/game/engine/constants";
 import { integrateActor } from "../src/game/engine/physics";
 import { createSim } from "../src/game/sim/create";
 import { updateActorAnimation } from "../src/game/sim/animation";
@@ -8,10 +8,10 @@ import { blankLevel, idle, steps } from "./helpers";
 
 describe("movement control", () => {
   it.each([
-    ["ember", "right", 300],
-    ["ember", "left", 300],
-    ["frost", "right", 290],
-    ["frost", "left", 290],
+    ["ember", "right", 240],
+    ["ember", "left", 240],
+    ["frost", "right", 232],
+    ["frost", "left", 232],
   ] as const)("caps %s running %s at the calmer speed of %i px/s", (who, direction, speed) => {
     const sim = createSim(blankLevel());
     const actor = sim[who];
@@ -43,6 +43,8 @@ describe("movement control", () => {
     steps(sim, 1, right);
     expect(sim.ember.vx).toBeGreaterThan(0);
     expect(sim.ember.vx).toBeLessThan(EMBER_SPEED);
+    steps(sim, 4, right);
+    expect(sim.ember.vx).toBeLessThan(EMBER_SPEED * 0.6);
     steps(sim, 12, right);
     expect(sim.ember.vx).toBe(EMBER_SPEED);
     const x = sim.ember.x;
@@ -61,7 +63,7 @@ describe("movement control", () => {
     steps(sim, 1, input);
     expect(sim.ember.vx).toBeGreaterThan(0);
     expect(sim.ember.anim).toBe("brake");
-    steps(sim, 14, input);
+    steps(sim, 20, input);
     expect(sim.ember.vx).toBe(-EMBER_SPEED);
   });
 
@@ -90,7 +92,7 @@ describe("movement control", () => {
     expect(late.vy).toBeGreaterThan(0);
   });
 
-  it("keeps the existing reachable jump apex while speeding up the descent", () => {
+  it("keeps the existing reachable jump apex with a calmer arc", () => {
     const sim = createSim(blankLevel());
     steps(sim, 2);
     const startY = sim.ember.y;
@@ -106,6 +108,25 @@ describe("movement control", () => {
     expect(sim.ember.onGround).toBe(true);
   });
 
+  it("gives a full running jump about 0.75 seconds without losing its crossing distance", () => {
+    const sim = createSim(blankLevel());
+    const input = idle();
+    input.ember.right = true;
+    steps(sim, 24, input);
+    const startX = sim.ember.x;
+    input.ember.jump = true;
+    let frames = 0;
+    do {
+      steps(sim, 1, input);
+      frames++;
+    } while (!sim.ember.onGround && frames < 150);
+    expect(sim.ember.onGround).toBe(true);
+    expect(frames * PHYS_DT).toBeGreaterThan(0.72);
+    expect(frames * PHYS_DT).toBeLessThan(0.78);
+    expect(sim.ember.x - startX).toBeGreaterThan(170);
+    expect(sim.ember.x - startX).toBeLessThan(185);
+  });
+
   it("does not build horizontal velocity against a solid wall", () => {
     const sim = createSim(blankLevel());
     sim.ember.x = TILE;
@@ -115,6 +136,15 @@ describe("movement control", () => {
     expect(sim.ember.x).toBe(TILE);
     expect(sim.ember.vx).toBe(0);
   });
+
+  it("keeps crate gravity and the world clock unchanged when slowing actors", () => {
+    const sim = createSim(blankLevel({
+      crates: [{ id: "falling", x: 10 * TILE, y: 2 * TILE, w: 28, h: 28, density: 1.2 }],
+    }));
+    steps(sim, 1);
+    expect(sim.crates[0].vy).toBe(2400 * PHYS_DT);
+    expect(sim.timeMs).toBeCloseTo(PHYS_DT * 1000);
+  });
 });
 
 describe("character action presentation", () => {
@@ -122,7 +152,7 @@ describe("character action presentation", () => {
     const actor = createSim(blankLevel()).ember;
     actor.anim = "walk";
     actor.animTime = 12;
-    actor.vy = -720;
+    actor.vy = -JUMP_SPEED;
     updateActorAnimation(actor, PHYS_DT);
     expect(actor.animTime).toBe(0);
     expect(actorPose(actor).frame).toBe(0);
@@ -153,12 +183,46 @@ describe("character action presentation", () => {
     actor.anim = "walk";
     updateActorAnimation(actor, 0.1);
     expect(actor.animTime).toBeCloseTo(0.05);
-    actor.landMs = 120;
+    actor.landMs = LAND_RECOVERY_MS;
     actor.landImpact = 1;
     const normal = actorPose(actor);
     const reduced = actorPose(actor, true);
     expect(normal.scaleY).toBeLessThan(1);
     expect(reduced.scaleY).toBe(1);
     expect(reduced.rotation).toBe(0);
+  });
+
+  it("slows the walk cycle and gives landing a readable, non-blocking recovery", () => {
+    const actor = createSim(blankLevel()).ember;
+    actor.onGround = true;
+    actor.moveDir = 1;
+    actor.vx = EMBER_SPEED;
+    actor.anim = "walk";
+    updateActorAnimation(actor, 1);
+    expect(actorPose(actor).frame).toBe(8);
+    actor.landMs = LAND_RECOVERY_MS;
+    actor.landImpact = 1;
+    updateActorAnimation(actor, PHYS_DT);
+    expect(actor.anim).toBe("land");
+    actor.landMs -= 50;
+    updateActorAnimation(actor, PHYS_DT);
+    expect(actor.anim).toBe("land");
+    expect(actor.vx).toBe(EMBER_SPEED);
+    actor.landMs = 0;
+    updateActorAnimation(actor, PHYS_DT);
+    expect(actor.anim).toBe("walk");
+  });
+
+  it("eases the jump stretch toward the apex rather than snapping at a velocity threshold", () => {
+    const actor = createSim(blankLevel()).ember;
+    actor.anim = "jump";
+    actor.vy = -181;
+    const before = actorPose(actor).scaleY;
+    actor.vy = -179;
+    const after = actorPose(actor).scaleY;
+    expect(before).toBeGreaterThan(after);
+    expect(before - after).toBeLessThan(0.001);
+    actor.vy = 0;
+    expect(actorPose(actor).scaleY).toBe(1);
   });
 });

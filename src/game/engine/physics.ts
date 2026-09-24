@@ -2,8 +2,8 @@ import type { Rect } from "./aabb";
 import { rectsOverlap } from "./aabb";
 import {
   COYOTE_MS,
-  FALL_SPEED_MAX,
-  GRAVITY,
+  ACTOR_FALL_SPEED_MAX,
+  ACTOR_GRAVITY,
   ICE_ACCEL,
   ICE_MAX_SCALE,
   ICE_SLIDE_DRAG,
@@ -102,8 +102,8 @@ export function integrateActor(
   if (a.onGround) a.coyoteMs = COYOTE_MS;
   else a.coyoteMs = Math.max(0, a.coyoteMs - dt * 1000);
 
-  a.vy += GRAVITY * (a.vy > 0 ? FALL_GRAVITY_SCALE : 1) * dt;
-  if (a.vy > FALL_SPEED_MAX) a.vy = FALL_SPEED_MAX;
+  a.vy += ACTOR_GRAVITY * (a.vy > 0 ? FALL_GRAVITY_SCALE : 1) * dt;
+  if (a.vy > ACTOR_FALL_SPEED_MAX) a.vy = ACTOR_FALL_SPEED_MAX;
 
   if (a.jumpBufferMs > 0 && a.coyoteMs > 0) {
     a.vy = -JUMP_SPEED;
@@ -131,7 +131,7 @@ export function integrateActor(
 
   if (!wasGrounded && a.onGround) {
     a.landMs = LAND_RECOVERY_MS;
-    a.landImpact = Math.min(1, Math.max(0.25, impactSpeed / FALL_SPEED_MAX));
+    a.landImpact = Math.min(1, Math.max(0.25, impactSpeed / ACTOR_FALL_SPEED_MAX));
   }
   else a.landMs = Math.max(0, a.landMs - dt * 1000);
 }

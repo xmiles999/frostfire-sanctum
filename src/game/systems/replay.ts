@@ -1,5 +1,5 @@
 import { rectsOverlap, type Rect } from "../engine/aabb";
-import { TILE } from "../engine/constants";
+import { EMBER_SPEED, FROST_SPEED, TILE } from "../engine/constants";
 import { L01 } from "../levels/level01";
 import { L02 } from "../levels/level02";
 import { L03 } from "../levels/level03";
@@ -54,7 +54,10 @@ function followWaypoint(intent: Intent, actor: ActorState, target: { x: number; 
   intent.left = cxOf(actor) > target.x * TILE + 2;
   const rising = target.y * TILE < actor.y + actor.h - 8;
   const needJump = rising || (crossGap && Math.abs(cxOf(actor) - target.x * TILE) > 20);
-  intent.jump = (needJump && actor.onGround && !actor.jumpWasHeld) || (!actor.onGround && actor.jumpWasHeld);
+  // Build momentum before a sideways takeoff, so the slower start clears overhead stair edges.
+  const dir = (intent.right ? 1 : 0) - (intent.left ? 1 : 0);
+  const ready = dir === 0 || actor.vx * dir >= (actor.id === "ember" ? EMBER_SPEED : FROST_SPEED) * 0.9;
+  intent.jump = (needJump && ready && actor.onGround && !actor.jumpWasHeld) || (!actor.onGround && actor.jumpWasHeld);
   const atFloor = Math.abs(actor.y + actor.h - target.y * TILE) < 8 || (allowCrate && actor.y + actor.h > 12.6 * TILE);
   return Math.abs(cxOf(actor) - target.x * TILE) < 8 && atFloor && actor.onGround;
 }

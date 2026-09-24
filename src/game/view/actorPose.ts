@@ -9,11 +9,11 @@ export function actorPose(actor: ActorState, reducedMotion = false) {
   const frame = air
     ? actor.anim === "jump"
       ? Math.min(2, Math.floor((1 + actor.vy / JUMP_SPEED) * 3))
-      : Math.min(5, 3 + Math.floor(actor.vy / 350))
+      : Math.min(5, 3 + Math.floor(actor.vy / (JUMP_SPEED / 2)))
     : actor.anim === "interact" || actor.anim === "brake" || actor.anim === "land" ? 0
-      : Math.floor(actor.animTime * (dying ? 12 : actor.anim === "push" ? 9 : actor.anim === "walk" ? 14 : 8));
-  const land = reducedMotion ? 0 : actor.landMs / LAND_RECOVERY_MS * actor.landImpact * 0.18;
-  const stretch = !reducedMotion && air && actor.vy < -180 ? 0.055 : 0;
+      : Math.floor(actor.animTime * (dying ? 12 : actor.anim === "push" ? 9 : actor.anim === "walk" ? 12 : 6));
+  const land = reducedMotion ? 0 : actor.landMs / LAND_RECOVERY_MS * actor.landImpact * 0.12;
+  const stretch = !reducedMotion && air ? Math.max(0, Math.min(1, -actor.vy / JUMP_SPEED)) * 0.04 : 0;
   const push = !reducedMotion && actor.pushing ? 0.045 : 0;
   const deathSquash = dying ? Math.min(0.16, actor.animTime * 0.35) : 0;
   const interaction = !reducedMotion && actor.interactMs > 0 ? Math.sin(actor.interactMs / 400 * Math.PI) * 0.08 : 0;

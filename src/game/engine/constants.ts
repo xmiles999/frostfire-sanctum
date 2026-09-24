@@ -2,19 +2,21 @@ export const TILE = 48;
 export const PHYS_DT = 1 / 120;
 export const MAX_PHYS_STEPS = 8;
 export const GRAVITY = 2400;
+/** Slow actors, not crates or the world clock: v × 0.8 and g × 0.64 preserve jump reach. */
+export const ACTOR_GRAVITY = 1536;
 /** Full jump rises about 108px / 2.25 tiles before fixed-step rounding. */
-export const JUMP_SPEED = 720;
+export const JUMP_SPEED = 576;
 /** Releasing jump while rising trims the arc without making taps feel abrupt. */
 export const JUMP_RELEASE_MULTIPLIER = 0.52;
-export const EMBER_SPEED = 300;
-export const FROST_SPEED = 290;
-export const MOVE_ACCEL = 7200;
-export const MOVE_BRAKE = 12000;
+export const EMBER_SPEED = 240;
+export const FROST_SPEED = 232;
+export const MOVE_ACCEL = 3000;
+export const MOVE_BRAKE = 7200;
 export const PRECISION_SPEED_SCALE = 0.5;
 export const FALL_GRAVITY_SCALE = 1.08;
 export const COYOTE_MS = 100;
 export const JUMP_BUFFER_MS = 120;
-export const LAND_RECOVERY_MS = 120;
+export const LAND_RECOVERY_MS = 160;
 export const ACTOR_W = 22;
 export const ACTOR_H = 34;
 export const HURT_MS = 420;
@@ -37,6 +39,7 @@ export const EXIT_HOLD_MS = 500;
 export const RESCUE_MS = 8000;
 export const REVIVE_INVULN_MS = 1200;
 export const FALL_SPEED_MAX = 1400;
+export const ACTOR_FALL_SPEED_MAX = 1120;
 export const LAVA_SPEED_SCALE = 0.9;
 export const STAR_TIME_MS = 240_000;
 export const STAR_DEATHS_2 = 6;
